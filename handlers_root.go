@@ -15,7 +15,14 @@ func (m *Monitor) handleRoot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Frame-Options", "DENY")
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
 
-	if err := templates.ExecuteTemplate(w, "index.tmpl", nil); err != nil {
+	// Get saved email from cookie
+	savedEmail := getEmailCookie(r)
+
+	data := map[string]string{
+		"SavedEmail": savedEmail,
+	}
+
+	if err := templates.ExecuteTemplate(w, "index.tmpl", data); err != nil {
 		m.logger.Error("Failed to render template", "template", "index.tmpl", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}

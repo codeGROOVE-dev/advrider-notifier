@@ -4,8 +4,10 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/base64"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -21,10 +23,27 @@ import (
 	"google.golang.org/api/option"
 )
 
+//go:embed media/*
+var mediaFS embed.FS
+
 const (
 	checkInterval = 10 * time.Minute
 	maxPostsPerEmail = 5 // Safety limit: max posts to include in a single email
 )
+
+// HTTP403Error indicates a 403 Forbidden response (login required)
+type HTTP403Error struct {
+	URL string
+}
+
+func (e *HTTP403Error) Error() string {
+	return fmt.Sprintf("HTTP 403 Forbidden: %s", e.URL)
+}
+
+func isHTTP403Error(err error) bool {
+	_, ok := err.(*HTTP403Error)
+	return ok
+}
 
 type Post struct {
 	ID        string
@@ -172,13 +191,18 @@ func startServer(monitor *Monitor, logger *slog.Logger) {
 	// HTTP server for Cloud Run
 	http.HandleFunc("/", monitor.handleRoot)
 	http.HandleFunc("/health", handleHealth)
-	http.HandleFunc("/poll", monitor.handlePoll)
+	http.HandleFunc("/pollz", monitor.handlePoll)
 	http.HandleFunc("/subscribe", monitor.handleSubscribe)
 	http.HandleFunc("/unsubscribe", monitor.handleUnsubscribe)
 	http.HandleFunc("/manage", monitor.handleManage)
 
-	// Serve static media files
-	http.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.Dir("media"))))
+	// Serve static media files from embedded filesystem
+	mediaSubFS, err := fs.Sub(mediaFS, "media")
+	if err != nil {
+		logger.Error("Failed to create media sub-filesystem", "error", err)
+		os.Exit(1)
+	}
+	http.Handle("/media/", http.StripPrefix("/media/", http.FileServer(http.FS(mediaSubFS))))
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -192,15 +216,43 @@ func startServer(monitor *Monitor, logger *slog.Logger) {
 	}
 }
 
+// isCloudRun checks if we're running in a GCP environment by querying the metadata server
+func isCloudRun(ctx context.Context) bool {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://metadata.google.internal/computeMetadata/v1/project/project-id", nil)
+	if err != nil {
+		return false
+	}
+	req.Header.Set("Metadata-Flavor", "Google")
+
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return false
+	}
+	defer resp.Body.Close()
+
+	return resp.StatusCode == http.StatusOK
+}
+
 func initGmailService(ctx context.Context) (*gmail.Service, error) {
-	// For Cloud Run, use Application Default Credentials
-	// The service account needs Gmail API access
+	// Try explicit credentials first (for local development or specific use cases)
 	credsJSON := os.Getenv("GOOGLE_CREDENTIALS_JSON")
-	if credsJSON == "" {
-		return nil, fmt.Errorf("GOOGLE_CREDENTIALS_JSON environment variable required")
+	if credsJSON != "" {
+		return gmail.NewService(ctx, option.WithCredentialsJSON([]byte(credsJSON)))
 	}
 
-	return gmail.NewService(ctx, option.WithCredentialsJSON([]byte(credsJSON)))
+	// If running in Cloud Run, use Application Default Credentials (ADC)
+	// This automatically uses the service account
+	// The service account needs Gmail API access (gmail.send scope)
+	if isCloudRun(ctx) {
+		return gmail.NewService(ctx)
+	}
+
+	// Not in Cloud Run and no explicit credentials
+	return nil, fmt.Errorf("GOOGLE_CREDENTIALS_JSON required when not running in Cloud Run")
 }
 
 func (m *Monitor) handlePoll(w http.ResponseWriter, r *http.Request) {
@@ -521,9 +573,19 @@ func (m *Monitor) fetchSinglePage(ctx context.Context, pageURL string) (*ThreadP
 			}
 
 			// Set essential Chrome-like headers to avoid getting blocked
-			req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36")
-			req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8")
+			req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+			req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
 			req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+			req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
+			req.Header.Set("Sec-Ch-Ua", `"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"`)
+			req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
+			req.Header.Set("Sec-Ch-Ua-Platform", `"macOS"`)
+			req.Header.Set("Sec-Fetch-Dest", "document")
+			req.Header.Set("Sec-Fetch-Mode", "navigate")
+			req.Header.Set("Sec-Fetch-Site", "none")
+			req.Header.Set("Sec-Fetch-User", "?1")
+			req.Header.Set("Upgrade-Insecure-Requests", "1")
+			req.Header.Set("Cache-Control", "max-age=0")
 
 			startTime := time.Now()
 			resp, err := m.httpClient.Do(req)
@@ -543,6 +605,11 @@ func (m *Monitor) fetchSinglePage(ctx context.Context, pageURL string) (*ThreadP
 				"status_code", resp.StatusCode,
 				"duration_ms", duration.Milliseconds(),
 				"content_length", resp.ContentLength)
+
+			if resp.StatusCode == http.StatusForbidden {
+				m.logger.Warn("HTTP 403 Forbidden - thread requires login", "url", pageURL)
+				return &HTTP403Error{URL: pageURL}
+			}
 
 			if resp.StatusCode != http.StatusOK {
 				m.logger.Warn("HTTP request returned non-OK status, will retry", "status_code", resp.StatusCode)
@@ -573,6 +640,10 @@ func (m *Monitor) fetchSinglePage(ctx context.Context, pageURL string) (*ThreadP
 		retry.Context(ctx),
 		retry.OnRetry(func(n uint, err error) {
 			m.logger.Info("Retrying fetch after error", "attempt", n, "error", err)
+		}),
+		retry.RetryIf(func(err error) bool {
+			// Don't retry on 403 Forbidden errors (login required)
+			return !isHTTP403Error(err)
 		}),
 	)
 

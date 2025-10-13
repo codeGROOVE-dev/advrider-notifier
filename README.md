@@ -39,7 +39,7 @@ A secure, minimal Go service that notifies subscribers about new ADVRider forum 
 |----------|-------------|---------|
 | `STORAGE_BUCKET` | Cloud Storage bucket name for subscription data | `advrider-subscriptions` |
 | `BASE_URL` | Public URL of the deployed service | `https://advrider-notifier-xyz.run.app` |
-| `GOOGLE_CREDENTIALS_JSON` | Service account credentials JSON | `{"type":"service_account",...}` |
+| `GOOGLE_CREDENTIALS_JSON` | Service account credentials JSON (optional, uses ADC if not set) | `{"type":"service_account",...}` |
 | `PORT` | HTTP server port (optional, defaults to 8080) | `8080` |
 | `LOCAL_STORAGE` | Local filesystem path for subscription data (optional, defaults to ./data) | `/var/tmp/advrider-notify` |
 
@@ -66,7 +66,7 @@ The service automatically runs in local development mode with mock email when no
 go run .
 
 # Trigger a poll manually (POST only)
-curl -X POST http://localhost:8080/poll
+curl -X POST http://localhost:8080/pollz
 ```
 
 ## Deployment

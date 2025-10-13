@@ -55,6 +55,21 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	post, err := m.fetchLatestPost(r.Context(), baseThreadURL)
 	if err != nil {
 		m.logger.Warn("Failed to verify thread", "url", baseThreadURL, "error", err)
+
+		// Check if it's a 403 Forbidden error (login-required forum)
+		if isHTTP403Error(err) {
+			w.Header().Set("Content-Type", "text/html; charset=utf-8")
+			w.WriteHeader(http.StatusForbidden)
+			if err := templates.ExecuteTemplate(w, "forbidden.tmpl", map[string]string{
+				"Email":     email,
+				"ThreadURL": threadURL,
+			}); err != nil {
+				m.logger.Error("Failed to render template", "template", "forbidden.tmpl", "error", err)
+				http.Error(w, "This thread is in a login-required forum (like Jo Momma) and cannot be monitored. We apologize for the inconvenience.", http.StatusForbidden)
+			}
+			return
+		}
+
 		http.Error(w, "Could not verify thread URL - make sure it's a valid ADVRider thread", http.StatusBadRequest)
 		return
 	}
@@ -86,6 +101,9 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 
 	// Check if already subscribed to this thread
 	if _, exists := sub.Threads[threadID]; exists {
+		// Set cookie to remember email address
+		setEmailCookie(w, email)
+
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		if err := templates.ExecuteTemplate(w, "already_subscribed.tmpl", map[string]string{"Email": email}); err != nil {
@@ -120,6 +138,9 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	m.logger.Info("Subscription created", "email", email, "thread_id", threadID, "ip", ip)
+
+	// Set cookie to remember email address
+	setEmailCookie(w, email)
 
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")

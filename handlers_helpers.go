@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"errors"
 	"fmt"
 	"html/template"
@@ -13,6 +14,9 @@ import (
 	"time"
 )
 
+//go:embed tmpl/*.tmpl
+var templateFS embed.FS
+
 var (
 	advRiderThreadRegex = regexp.MustCompile(`^https://advrider\.com/f/threads/[^/]+\.(\d+)(/.*)?$`)
 	emailRegex          = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
@@ -22,8 +26,8 @@ var (
 )
 
 func init() {
-	// Load all templates
-	templates = template.Must(template.ParseGlob("tmpl/*.tmpl"))
+	// Load all templates from embedded filesystem
+	templates = template.Must(template.ParseFS(templateFS, "tmpl/*.tmpl"))
 }
 
 // Rate limiter for subscriptions (max 5 per IP per hour)
@@ -128,4 +132,27 @@ func escapeHTMLAttr(s string) string {
 	s = strings.ReplaceAll(s, "\"", "&quot;")
 	s = strings.ReplaceAll(s, "'", "&#39;")
 	return s
+}
+
+// setEmailCookie sets a secure cookie with the user's email address
+func setEmailCookie(w http.ResponseWriter, email string) {
+	cookie := &http.Cookie{
+		Name:     "advrider_email",
+		Value:    email,
+		Path:     "/",
+		MaxAge:   365 * 24 * 60 * 60, // 1 year
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
+	http.SetCookie(w, cookie)
+}
+
+// getEmailCookie retrieves the user's email from a cookie
+func getEmailCookie(r *http.Request) string {
+	cookie, err := r.Cookie("advrider_email")
+	if err != nil {
+		return ""
+	}
+	return cookie.Value
 }
