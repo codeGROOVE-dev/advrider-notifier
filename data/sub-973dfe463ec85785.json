@@ -1,0 +1,15 @@
+{
+  "email": "test@example.com",
+  "token": "3bee24647237a8438a770d147b566052b2ab71cb709924b7828d4bdab1466045",
+  "threads": {
+    "365943": {
+      "thread_url": "https://advrider.com/f/threads/durham-rtp-wednesday-advlunch.365943/",
+      "thread_id": "365943",
+      "thread_title": "",
+      "last_post_id": "7723483",
+      "last_post_time": "0001-01-01T00:00:00Z",
+      "last_polled_at": "0001-01-01T00:00:00Z",
+      "created_at": "2025-10-13T17:44:14.799486Z"
+    }
+  }
+}
