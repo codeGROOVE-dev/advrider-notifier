@@ -137,6 +137,13 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Send welcome email
+	userAgent := r.Header.Get("User-Agent")
+	if err := m.sendWelcomeEmail(r.Context(), sub, sub.Threads[threadID], ip, userAgent); err != nil {
+		// Log error but don't fail the subscription
+		m.logger.Warn("Failed to send welcome email", "email", email, "error", err)
+	}
+
 	m.logger.Info("Subscription created", "email", email, "thread_id", threadID, "ip", ip)
 
 	// Set cookie to remember email address

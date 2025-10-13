@@ -978,6 +978,125 @@ func (m *Monitor) formatEmailBody(sub *Subscription, thread *Thread, posts []*Po
 	return b.String()
 }
 
+// sendWelcomeEmail sends a welcome email when a user first subscribes to a thread.
+func (m *Monitor) sendWelcomeEmail(ctx context.Context, sub *Subscription, thread *Thread, ip, userAgent string) error {
+	// Use thread title for email subject to enable proper threading
+	subject := thread.ThreadTitle
+	if subject == "" {
+		subject = "ADVRider Thread Update"
+	}
+
+	manageURL := fmt.Sprintf("%s/manage?token=%s", m.baseURL, url.QueryEscape(sub.Token))
+
+	var b strings.Builder
+	b.WriteString("<!DOCTYPE html>\n<html>\n<head>\n")
+	b.WriteString("<meta charset=\"utf-8\">\n")
+	b.WriteString("<style>\n")
+	b.WriteString("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }\n")
+	b.WriteString(".header { border-bottom: 2px solid #e67e22; padding-bottom: 10px; margin-bottom: 20px; }\n")
+	b.WriteString(".content { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 15px 0; }\n")
+	b.WriteString(".info { color: #7f8c8d; font-size: 0.9em; margin: 15px 0; }\n")
+	b.WriteString(".footer { margin-top: 20px; padding-top: 10px; border-top: 2px solid #ecf0f1; color: #7f8c8d; font-size: 0.9em; }\n")
+	b.WriteString("a { color: #e67e22; text-decoration: none; }\n")
+	b.WriteString("a:hover { text-decoration: underline; }\n")
+	b.WriteString("</style>\n</head>\n<body>\n")
+
+	b.WriteString("<div class=\"header\">\n")
+	b.WriteString("<h2>ADVRider Thread Subscription Confirmed</h2>\n")
+	b.WriteString("</div>\n")
+
+	b.WriteString("<div class=\"content\">\n")
+	b.WriteString(fmt.Sprintf("<p>You've successfully subscribed to notifications for the thread: <strong>%s</strong></p>\n", escapeHTML(thread.ThreadTitle)))
+	b.WriteString("<p>You'll receive an email whenever new posts are added to this thread.</p>\n")
+	b.WriteString("</div>\n")
+
+	b.WriteString("<div class=\"info\">\n")
+	b.WriteString("<p><strong>Subscription Details:</strong></p>\n")
+	b.WriteString("<ul>\n")
+	b.WriteString(fmt.Sprintf("<li>IP Address: %s</li>\n", escapeHTML(ip)))
+	b.WriteString(fmt.Sprintf("<li>Browser: %s</li>\n", escapeHTML(userAgent)))
+	b.WriteString("</ul>\n")
+	b.WriteString("</div>\n")
+
+	b.WriteString("<div class=\"footer\">\n")
+	b.WriteString(fmt.Sprintf("<a href=\"%s\">View thread on ADVRider</a>\n", escapeHTML(thread.ThreadURL)))
+	b.WriteString(" &bull; \n")
+	b.WriteString(fmt.Sprintf("<a href=\"%s\">Manage Subscriptions</a>\n", escapeHTML(manageURL)))
+	b.WriteString("</div>\n")
+
+	b.WriteString("</body>\n</html>")
+
+	body := b.String()
+
+	// Mock email mode for local development
+	if m.mockEmail {
+		m.logger.Info("MOCK WELCOME EMAIL",
+			"to", sub.Email,
+			"subject", subject,
+			"thread_id", thread.ThreadID,
+			"ip", ip)
+		return nil
+	}
+
+	// Create MIME message
+	var msg strings.Builder
+	msg.WriteString("MIME-Version: 1.0\r\n")
+	msg.WriteString(fmt.Sprintf("To: %s\r\n", sub.Email))
+	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
+	msg.WriteString("Content-Type: text/html; charset=utf-8\r\n\r\n")
+	msg.WriteString(body)
+	encoded := base64.URLEncoding.EncodeToString([]byte(msg.String()))
+
+	err := retry.Do(
+		func() error {
+			m.logger.Info("Gmail API request starting",
+				"method", "POST",
+				"endpoint", "users.messages.send",
+				"to", sub.Email,
+				"type", "welcome",
+				"subject", subject)
+
+			startTime := time.Now()
+			_, err := m.gmailService.Users.Messages.Send("me", &gmail.Message{
+				Raw: encoded,
+			}).Context(ctx).Do()
+			duration := time.Since(startTime)
+
+			if err != nil {
+				m.logger.Warn("Gmail API send failed, will retry",
+					"to", sub.Email,
+					"duration_ms", duration.Milliseconds(),
+					"error", err)
+				return err
+			}
+
+			m.logger.Info("Gmail API request completed",
+				"endpoint", "users.messages.send",
+				"to", sub.Email,
+				"type", "welcome",
+				"duration_ms", duration.Milliseconds(),
+				"status", "success")
+
+			return nil
+		},
+		retry.Attempts(10),
+		retry.Delay(time.Second),
+		retry.MaxDelay(2*time.Minute),
+		retry.MaxJitter(10*time.Second),
+		retry.Context(ctx),
+		retry.OnRetry(func(n uint, err error) {
+			m.logger.Info("Retrying welcome email send after error", "attempt", n, "error", err)
+		}),
+	)
+
+	if err != nil {
+		return fmt.Errorf("after retries: %w", err)
+	}
+
+	m.logger.Info("Welcome email successfully sent", "to", sub.Email)
+	return nil
+}
+
 // escapeHTML escapes HTML special characters for security.
 func escapeHTML(s string) string {
 	s = strings.ReplaceAll(s, "&", "&amp;")
