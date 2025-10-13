@@ -16,7 +16,7 @@ func (m *Monitor) handleRoot(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:")
 
 	// Get saved email from cookie
-	savedEmail := getEmailCookie(r)
+	savedEmail := emailCookie(r)
 
 	data := map[string]string{
 		"SavedEmail": savedEmail,

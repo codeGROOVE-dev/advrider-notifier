@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -17,7 +18,7 @@ import (
 )
 
 // subscriptionKey generates a stable filename from an email address.
-// Format: sub-{hash}.json where hash is SHA256 of email (first 16 chars)
+// Format: sub-{hash}.json where hash is SHA256 of email (first 16 chars).
 func subscriptionKey(email string) string {
 	h := sha256.Sum256([]byte(email))
 	return fmt.Sprintf("sub-%x.json", h[:8])
@@ -55,7 +56,9 @@ func (m *Monitor) saveSubscription(ctx context.Context, sub *Subscription) error
 	// Cloud Storage
 	w := m.storageClient.Bucket(m.bucket).Object(key).NewWriter(ctx)
 	if _, err := w.Write(data); err != nil {
-		w.Close()
+		if closeErr := w.Close(); closeErr != nil {
+			m.logger.Warn("Failed to close writer after error", "error", closeErr)
+		}
 		return fmt.Errorf("write to storage: %w", err)
 	}
 
@@ -78,7 +81,7 @@ func (m *Monitor) loadSubscription(ctx context.Context, key string) (*Subscripti
 		data, err = os.ReadFile(filePath)
 		if err != nil {
 			if os.IsNotExist(err) {
-				return nil, fmt.Errorf("storage: object doesn't exist")
+				return nil, errors.New("storage: object doesn't exist")
 			}
 			return nil, fmt.Errorf("read from local storage: %w", err)
 		}
@@ -88,7 +91,11 @@ func (m *Monitor) loadSubscription(ctx context.Context, key string) (*Subscripti
 		if err != nil {
 			return nil, fmt.Errorf("open storage reader: %w", err)
 		}
-		defer r.Close()
+		defer func() {
+			if closeErr := r.Close(); closeErr != nil {
+				m.logger.Warn("Failed to close storage reader", "error", closeErr)
+			}
+		}()
 
 		data, err = io.ReadAll(r)
 		if err != nil {
@@ -102,12 +109,6 @@ func (m *Monitor) loadSubscription(ctx context.Context, key string) (*Subscripti
 	}
 
 	return &sub, nil
-}
-
-// loadSubscriptionByEmail loads a subscription by email address.
-func (m *Monitor) loadSubscriptionByEmail(ctx context.Context, email string) (*Subscription, error) {
-	key := subscriptionKey(email)
-	return m.loadSubscription(ctx, key)
 }
 
 // deleteSubscription removes a subscription from storage (Cloud Storage or local filesystem).
@@ -169,7 +170,7 @@ func (m *Monitor) listSubscriptions(ctx context.Context) ([]*Subscription, error
 
 	for {
 		attrs, err := it.Next()
-		if err == iterator.Done {
+		if errors.Is(err, iterator.Done) {
 			break
 		}
 		if err != nil {
@@ -201,5 +202,5 @@ func (m *Monitor) findSubscriptionByToken(ctx context.Context, token string) (*S
 		}
 	}
 
-	return nil, fmt.Errorf("subscription not found")
+	return nil, errors.New("subscription not found")
 }

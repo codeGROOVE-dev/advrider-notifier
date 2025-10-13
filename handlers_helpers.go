@@ -21,25 +21,14 @@ var (
 	advRiderThreadRegex = regexp.MustCompile(`^https://advrider\.com/f/threads/[^/]+\.(\d+)(/.*)?$`)
 	emailRegex          = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
-	// Templates
-	templates *template.Template
+	// Templates.
+	templates = template.Must(template.ParseFS(templateFS, "tmpl/*.tmpl"))
 )
 
-func init() {
-	// Load all templates from embedded filesystem
-	templates = template.Must(template.ParseFS(templateFS, "tmpl/*.tmpl"))
-}
-
-// Rate limiter for subscriptions (max 5 per IP per hour)
+// Rate limiter for subscriptions (max 5 per IP per hour).
 type rateLimiter struct {
-	mu      sync.Mutex
 	clients map[string][]time.Time
-}
-
-func newRateLimiter() *rateLimiter {
-	return &rateLimiter{
-		clients: make(map[string][]time.Time),
-	}
+	mu      sync.Mutex
 }
 
 func (rl *rateLimiter) allow(ip string) bool {
@@ -67,11 +56,11 @@ func (rl *rateLimiter) allow(ip string) bool {
 	return true
 }
 
-var subscribeRateLimiter = newRateLimiter()
+var subscribeRateLimiter = &rateLimiter{
+	clients: make(map[string][]time.Time),
+}
 
-// Helper functions
-
-func getClientIP(r *http.Request) string {
+func clientIP(r *http.Request) string {
 	// Check X-Forwarded-For header (Cloud Run)
 	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
 		ips := strings.Split(xff, ",")
@@ -125,16 +114,7 @@ func isNotFoundError(err error) bool {
 	return err != nil && strings.Contains(err.Error(), "storage: object doesn't exist")
 }
 
-func escapeHTMLAttr(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, "\"", "&quot;")
-	s = strings.ReplaceAll(s, "'", "&#39;")
-	return s
-}
-
-// setEmailCookie sets a secure cookie with the user's email address
+// setEmailCookie sets a secure cookie with the user's email address.
 func setEmailCookie(w http.ResponseWriter, email string) {
 	cookie := &http.Cookie{
 		Name:     "advrider_email",
@@ -148,8 +128,8 @@ func setEmailCookie(w http.ResponseWriter, email string) {
 	http.SetCookie(w, cookie)
 }
 
-// getEmailCookie retrieves the user's email from a cookie
-func getEmailCookie(r *http.Request) string {
+// emailCookie retrieves the user's email from a cookie.
+func emailCookie(r *http.Request) string {
 	cookie, err := r.Cookie("advrider_email")
 	if err != nil {
 		return ""

@@ -34,3 +34,6 @@ go.work.sum
 data/
 /android-notifier
 
+
+# added by lint-install
+out/

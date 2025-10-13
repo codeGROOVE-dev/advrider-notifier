@@ -6,7 +6,7 @@ import (
 	"net/url"
 )
 
-func (m *Monitor) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
+func (*Monitor) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	// Redirect to manage page with token
 	token := r.URL.Query().Get("token")
 	if token == "" || len(token) != 64 {
@@ -110,7 +110,7 @@ func (m *Monitor) handleManage(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	data := map[string]interface{}{
+	data := map[string]any{
 		"Email":   sub.Email,
 		"Token":   token,
 		"Threads": threads,

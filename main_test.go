@@ -32,30 +32,6 @@ func TestGetText(t *testing.T) {
 	}
 }
 
-func TestCreateMIMEMessage(t *testing.T) {
-	to := "test@example.com"
-	subject := "Test Subject"
-	body := "<html><body>Test Body</body></html>"
-
-	msg := createMIMEMessage(to, subject, body)
-
-	if !strings.Contains(msg, "MIME-Version: 1.0") {
-		t.Error("MIME message missing version header")
-	}
-	if !strings.Contains(msg, "To: test@example.com") {
-		t.Error("MIME message missing To header")
-	}
-	if !strings.Contains(msg, "Subject: Test Subject") {
-		t.Error("MIME message missing Subject header")
-	}
-	if !strings.Contains(msg, "Content-Type: text/html") {
-		t.Error("MIME message missing content type")
-	}
-	if !strings.Contains(msg, body) {
-		t.Error("MIME message missing body")
-	}
-}
-
 func TestFormatEmailBody(t *testing.T) {
 	m := &Monitor{
 		baseURL: "https://test.example.com",

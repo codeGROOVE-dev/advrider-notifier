@@ -6,6 +6,7 @@ import (
 	"context"
 	"embed"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"io/fs"
 	"log/slog"
@@ -27,11 +28,11 @@ import (
 var mediaFS embed.FS
 
 const (
-	checkInterval = 10 * time.Minute
+	checkInterval    = 10 * time.Minute
 	maxPostsPerEmail = 5 // Safety limit: max posts to include in a single email
 )
 
-// HTTP403Error indicates a 403 Forbidden response (login required)
+// HTTP403Error indicates a 403 Forbidden response (login required).
 type HTTP403Error struct {
 	URL string
 }
@@ -41,8 +42,8 @@ func (e *HTTP403Error) Error() string {
 }
 
 func isHTTP403Error(err error) bool {
-	_, ok := err.(*HTTP403Error)
-	return ok
+	var forbidden *HTTP403Error
+	return errors.As(err, &forbidden)
 }
 
 type Post struct {
@@ -56,24 +57,24 @@ type Post struct {
 type ThreadPage struct {
 	Posts       []*Post
 	Title       string
-	LastPage    int    // Last page number (0 if single page)
-	CurrentPage int    // Current page number
+	LastPage    int // Last page number (0 if single page)
+	CurrentPage int // Current page number
 }
 
 type Thread struct {
+	LastPostTime time.Time `json:"last_post_time"` // When the last post was seen
+	LastPolledAt time.Time `json:"last_polled_at"` // When we last checked this thread
+	CreatedAt    time.Time `json:"created_at"`     // Subscription timestamp
 	ThreadURL    string    `json:"thread_url"`     // Full thread URL
 	ThreadID     string    `json:"thread_id"`      // Extracted thread ID
 	ThreadTitle  string    `json:"thread_title"`   // Thread title for email threading
 	LastPostID   string    `json:"last_post_id"`   // Track last seen post
-	LastPostTime time.Time `json:"last_post_time"` // When the last post was seen
-	LastPolledAt time.Time `json:"last_polled_at"` // When we last checked this thread
-	CreatedAt    time.Time `json:"created_at"`     // Subscription timestamp
 }
 
 type Subscription struct {
+	Threads map[string]*Thread `json:"threads"` // Map of threadID -> Thread
 	Email   string             `json:"email"`   // Subscriber email
 	Token   string             `json:"token"`   // Secure token for unsubscribe
-	Threads map[string]*Thread `json:"threads"` // Map of threadID -> Thread
 }
 
 type Monitor struct {
@@ -173,7 +174,11 @@ func main() {
 		logger.Error("Failed to initialize Storage client", "error", err)
 		os.Exit(1)
 	}
-	defer storageClient.Close()
+	defer func() {
+		if err := storageClient.Close(); err != nil {
+			logger.Warn("Failed to close storage client", "error", err)
+		}
+	}()
 
 	monitor := &Monitor{
 		gmailService:  gmailService,
@@ -216,7 +221,7 @@ func startServer(monitor *Monitor, logger *slog.Logger) {
 	}
 }
 
-// isCloudRun checks if we're running in a GCP environment by querying the metadata server
+// isCloudRun checks if we're running in a GCP environment by querying the metadata server.
 func isCloudRun(ctx context.Context) bool {
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
@@ -232,7 +237,9 @@ func isCloudRun(ctx context.Context) bool {
 	if err != nil {
 		return false
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	return resp.StatusCode == http.StatusOK
 }
@@ -252,7 +259,7 @@ func initGmailService(ctx context.Context) (*gmail.Service, error) {
 	}
 
 	// Not in Cloud Run and no explicit credentials
-	return nil, fmt.Errorf("GOOGLE_CREDENTIALS_JSON required when not running in Cloud Run")
+	return nil, errors.New("GOOGLE_CREDENTIALS_JSON required when not running in Cloud Run")
 }
 
 func (m *Monitor) handlePoll(w http.ResponseWriter, r *http.Request) {
@@ -271,10 +278,12 @@ func (m *Monitor) handlePoll(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, `{"status":"completed"}`)
+	if _, err := fmt.Fprintf(w, `{"status":"completed"}`); err != nil {
+		m.logger.Warn("Failed to write response", "error", err)
+	}
 }
 
-// calculatePollInterval determines how often to poll a thread based on activity
+// calculatePollInterval determines how often to poll a thread based on activity.
 func calculatePollInterval(lastPostTime, lastPolledAt time.Time) time.Duration {
 	// If never polled or never seen a post, poll now
 	if lastPolledAt.IsZero() || lastPostTime.IsZero() {
@@ -301,13 +310,6 @@ func calculatePollInterval(lastPostTime, lastPolledAt time.Time) time.Duration {
 	return interval
 }
 
-// shouldPollThread determines if a thread needs polling based on smart intervals
-func shouldPollThread(thread *Thread, now time.Time) bool {
-	interval := calculatePollInterval(thread.LastPostTime, thread.LastPolledAt)
-	timeSinceLastPoll := now.Sub(thread.LastPolledAt)
-	return timeSinceLastPoll >= interval
-}
-
 func (m *Monitor) checkAllSubscriptions(ctx context.Context) error {
 	subs, err := m.listSubscriptions(ctx)
 	if err != nil {
@@ -326,8 +328,9 @@ func (m *Monitor) checkAllSubscriptions(ctx context.Context) error {
 			totalThreads++
 
 			// Check if thread needs polling based on activity
-			if !shouldPollThread(thread, now) {
-				interval := calculatePollInterval(thread.LastPostTime, thread.LastPolledAt)
+			interval := calculatePollInterval(thread.LastPostTime, thread.LastPolledAt)
+			timeSinceLastPoll := now.Sub(thread.LastPolledAt)
+			if timeSinceLastPoll < interval {
 				nextPoll := thread.LastPolledAt.Add(interval)
 				m.logger.Debug("Skipping thread (not due for polling)",
 					"email", sub.Email,
@@ -385,7 +388,7 @@ func (m *Monitor) checkThread(ctx context.Context, sub *Subscription, threadID s
 	thread.LastPolledAt = now
 
 	if len(posts) == 0 {
-		return fmt.Errorf("no posts found in thread")
+		return errors.New("no posts found in thread")
 	}
 
 	latestPost := posts[len(posts)-1]
@@ -474,7 +477,7 @@ func (m *Monitor) checkThread(ctx context.Context, sub *Subscription, threadID s
 	return nil
 }
 
-// buildPageURL constructs a URL for a specific page number
+// buildPageURL constructs a URL for a specific page number.
 func buildPageURL(baseURL string, pageNum int) string {
 	if pageNum <= 1 {
 		return baseURL
@@ -484,7 +487,7 @@ func buildPageURL(baseURL string, pageNum int) string {
 	return fmt.Sprintf("%s/page-%d", baseURL, pageNum)
 }
 
-// fetchSmartThreadPosts fetches posts efficiently using multi-page strategy
+// fetchSmartThreadPosts fetches posts efficiently using multi-page strategy.
 func (m *Monitor) fetchSmartThreadPosts(ctx context.Context, threadURL string, lastSeenPostID string) (*ThreadPage, error) {
 	m.logger.Info("Starting smart thread fetch", "url", threadURL, "last_seen_post", lastSeenPostID)
 
@@ -556,7 +559,7 @@ func (m *Monitor) fetchSmartThreadPosts(ctx context.Context, threadURL string, l
 	}, nil
 }
 
-// fetchSinglePage fetches a single thread page
+// fetchSinglePage fetches a single thread page.
 func (m *Monitor) fetchSinglePage(ctx context.Context, pageURL string) (*ThreadPage, error) {
 	var page *ThreadPage
 
@@ -567,7 +570,7 @@ func (m *Monitor) fetchSinglePage(ctx context.Context, pageURL string) (*ThreadP
 				"url", pageURL,
 				"purpose", "fetch_thread_page")
 
-			req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, pageURL, http.NoBody)
 			if err != nil {
 				return fmt.Errorf("create request: %w", err)
 			}
@@ -598,7 +601,11 @@ func (m *Monitor) fetchSinglePage(ctx context.Context, pageURL string) (*ThreadP
 					"error", err)
 				return err
 			}
-			defer resp.Body.Close()
+			defer func() {
+				if closeErr := resp.Body.Close(); closeErr != nil {
+					m.logger.Warn("Failed to close response body", "error", closeErr)
+				}
+			}()
 
 			m.logger.Info("HTTP request completed",
 				"url", pageURL,
@@ -633,10 +640,10 @@ func (m *Monitor) fetchSinglePage(ctx context.Context, pageURL string) (*ThreadP
 
 			return nil
 		},
-		retry.Attempts(5),
+		retry.Attempts(10),
 		retry.Delay(time.Second),
-		retry.MaxDelay(30*time.Second),
-		retry.MaxJitter(5*time.Second),
+		retry.MaxDelay(2*time.Minute),
+		retry.MaxJitter(10*time.Second),
 		retry.Context(ctx),
 		retry.OnRetry(func(n uint, err error) {
 			m.logger.Info("Retrying fetch after error", "attempt", n, "error", err)
@@ -654,42 +661,19 @@ func (m *Monitor) fetchSinglePage(ctx context.Context, pageURL string) (*ThreadP
 	return page, nil
 }
 
-func (m *Monitor) fetchAllPosts(ctx context.Context, threadURL string) ([]*Post, error) {
+func (m *Monitor) fetchLatestPost(ctx context.Context, threadURL string) (*Post, error) {
 	page, err := m.fetchSmartThreadPosts(ctx, threadURL, "")
 	if err != nil {
 		return nil, err
 	}
-	return page.Posts, nil
-}
-
-func (m *Monitor) fetchThreadPage(ctx context.Context, threadURL string) (*ThreadPage, error) {
-	return m.fetchSmartThreadPosts(ctx, threadURL, "")
-}
-
-func (m *Monitor) fetchLatestPost(ctx context.Context, threadURL string) (*Post, error) {
-	posts, err := m.fetchAllPosts(ctx, threadURL)
-	if err != nil {
-		return nil, err
-	}
+	posts := page.Posts
 	if len(posts) == 0 {
-		return nil, fmt.Errorf("no posts found")
+		return nil, errors.New("no posts found")
 	}
 	return posts[len(posts)-1], nil
 }
 
-func parseLatestPost(body interface{ Read([]byte) (int, error) }, threadURL string) (*Post, error) {
-	posts, err := parseAllPosts(body, threadURL)
-	if err != nil {
-		return nil, err
-	}
-	if len(posts) == 0 {
-		return nil, fmt.Errorf("no posts found")
-	}
-	// Return the last post (most recent)
-	return posts[len(posts)-1], nil
-}
-
-// parseThreadPage extracts title, posts, and pagination info from a thread page
+// parseThreadPage extracts title, posts, and pagination info from a thread page.
 func parseThreadPage(body interface{ Read([]byte) (int, error) }, threadURL string) (*ThreadPage, error) {
 	doc, err := html.Parse(body)
 	if err != nil {
@@ -771,7 +755,7 @@ func parseThreadPage(body interface{ Read([]byte) (int, error) }, threadURL stri
 	traverse(doc)
 
 	if len(posts) == 0 {
-		return nil, fmt.Errorf("no posts found")
+		return nil, errors.New("no posts found")
 	}
 
 	if title == "" {
@@ -788,15 +772,6 @@ func parseThreadPage(body interface{ Read([]byte) (int, error) }, threadURL stri
 		LastPage:    lastPage,
 		CurrentPage: currentPage,
 	}, nil
-}
-
-// parseAllPosts extracts all posts from a thread page (for backward compatibility)
-func parseAllPosts(body interface{ Read([]byte) (int, error) }, threadURL string) ([]*Post, error) {
-	page, err := parseThreadPage(body, threadURL)
-	if err != nil {
-		return nil, err
-	}
-	return page.Posts, nil
 }
 
 func extractData(n *html.Node, author, content, timestamp *string) {
@@ -884,8 +859,14 @@ func (m *Monitor) sendEmail(ctx context.Context, sub *Subscription, thread *Thre
 		return nil
 	}
 
-	message := createMIMEMessage(sub.Email, subject, body)
-	encoded := base64.URLEncoding.EncodeToString([]byte(message))
+	// Create MIME message
+	var msg strings.Builder
+	msg.WriteString("MIME-Version: 1.0\r\n")
+	msg.WriteString(fmt.Sprintf("To: %s\r\n", sub.Email))
+	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
+	msg.WriteString("Content-Type: text/html; charset=utf-8\r\n\r\n")
+	msg.WriteString(body)
+	encoded := base64.URLEncoding.EncodeToString([]byte(msg.String()))
 
 	err := retry.Do(
 		func() error {
@@ -918,10 +899,10 @@ func (m *Monitor) sendEmail(ctx context.Context, sub *Subscription, thread *Thre
 
 			return nil
 		},
-		retry.Attempts(5),
+		retry.Attempts(10),
 		retry.Delay(time.Second),
-		retry.MaxDelay(30*time.Second),
-		retry.MaxJitter(5*time.Second),
+		retry.MaxDelay(2*time.Minute),
+		retry.MaxJitter(10*time.Second),
 		retry.Context(ctx),
 		retry.OnRetry(func(n uint, err error) {
 			m.logger.Info("Retrying email send after error", "attempt", n, "error", err)
@@ -1005,14 +986,4 @@ func escapeHTML(s string) string {
 	s = strings.ReplaceAll(s, "\"", "&quot;")
 	s = strings.ReplaceAll(s, "'", "&#39;")
 	return s
-}
-
-func createMIMEMessage(to, subject, body string) string {
-	var msg strings.Builder
-	msg.WriteString("MIME-Version: 1.0\r\n")
-	msg.WriteString(fmt.Sprintf("To: %s\r\n", to))
-	msg.WriteString(fmt.Sprintf("Subject: %s\r\n", subject))
-	msg.WriteString("Content-Type: text/html; charset=utf-8\r\n\r\n")
-	msg.WriteString(body)
-	return msg.String()
 }

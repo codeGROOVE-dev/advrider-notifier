@@ -13,7 +13,7 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Rate limiting by IP
-	ip := getClientIP(r)
+	ip := clientIP(r)
 	if !subscribeRateLimiter.allow(ip) {
 		m.logger.Warn("Rate limit exceeded", "ip", ip)
 		http.Error(w, "Too many subscription requests. Please try again later.", http.StatusTooManyRequests)
@@ -75,7 +75,7 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load or create subscription
-	sub, err := m.loadSubscriptionByEmail(r.Context(), email)
+	sub, err := m.loadSubscription(r.Context(), subscriptionKey(email))
 	if err != nil {
 		// Check if it's a "not found" error
 		if isNotFoundError(err) {
