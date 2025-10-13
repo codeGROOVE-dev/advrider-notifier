@@ -8,12 +8,11 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/PuerkitoBio/goquery"
 	"github.com/codeGROOVE-dev/retry"
-	"golang.org/x/net/html"
 )
 
 // Page represents a parsed thread page with posts and metadata.
@@ -165,7 +164,7 @@ func (s *Scraper) fetchSinglePage(ctx context.Context, pageURL string) (*Page, e
 			req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
 			req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
 			req.Header.Set("Accept-Language", "en-US,en;q=0.9")
-			req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
+			// Note: Don't set Accept-Encoding - let Go's http.Client handle compression automatically
 			req.Header.Set("Sec-Ch-Ua", `"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"`)
 			req.Header.Set("Sec-Ch-Ua-Mobile", "?0")
 			req.Header.Set("Sec-Ch-Ua-Platform", `"macOS"`)
@@ -211,8 +210,8 @@ func (s *Scraper) fetchSinglePage(ctx context.Context, pageURL string) (*Page, e
 
 			page, err = parsePage(resp.Body, pageURL)
 			if err != nil {
-				s.logger.Warn("Failed to parse HTML, will retry", "error", err)
-				return err
+				s.logger.Error("Failed to parse HTML", "error", err)
+				return retry.Unrecoverable(err)
 			}
 
 			s.logger.Info("Thread page parsed successfully",
@@ -257,95 +256,74 @@ func buildPageURL(baseURL string, pageNum int) string {
 }
 
 func parsePage(body interface{ Read([]byte) (int, error) }, threadURL string) (*Page, error) {
-	doc, err := html.Parse(body)
+	doc, err := goquery.NewDocumentFromReader(body)
 	if err != nil {
 		return nil, err
 	}
 
-	var posts []*notifier.Post
-	var title string
-	var lastPage, currentPage int
-
-	var traverse func(*html.Node)
-	traverse = func(n *html.Node) {
-		// Extract thread title from <title> tag or h1.p-title-value
-		if n.Type == html.ElementNode {
-			if n.Data == "h1" && hasClass(n, "p-title-value") {
-				title = strings.TrimSpace(text(n))
-			} else if n.Data == "title" && title == "" {
-				// Fallback: extract from <title> tag and clean it up
-				rawTitle := strings.TrimSpace(text(n))
-				// Remove " | ADVrider" suffix if present
-				if idx := strings.Index(rawTitle, " | "); idx > 0 {
-					title = rawTitle[:idx]
-				} else {
-					title = rawTitle
-				}
-			}
-
-			// Extract pagination info from pageNav elements
-			if n.Data == "a" && hasClass(n, "pageNav-page") {
-				pageText := strings.TrimSpace(text(n))
-				if pageNum, err := strconv.Atoi(pageText); err == nil {
-					if pageNum > lastPage {
-						lastPage = pageNum
-					}
-				}
-			}
-
-			// Extract current page from pageNav-page--current
-			if n.Data == "li" && hasClass(n, "pageNav-page--current") {
-				pageText := strings.TrimSpace(text(n))
-				if pageNum, err := strconv.Atoi(pageText); err == nil {
-					currentPage = pageNum
-				}
-			}
-
-			// Extract posts from li elements with id="post-XXX" and class="message"
-			if n.Data == "li" && hasClass(n, "message") {
-				var id, author, content, ts string
-
-				for _, a := range n.Attr {
-					if a.Key == "id" {
-						// Extract post ID from id like "post-12345"
-						if strings.HasPrefix(a.Val, "post-") {
-							id = strings.TrimPrefix(a.Val, "post-")
-						}
-					}
-				}
-
-				// Extract author, content, and timestamp from child nodes
-				extractData(n, &author, &content, &ts)
-
-				if id != "" && content != "" {
-					posts = append(posts, &notifier.Post{
-						ID:        id,
-						Author:    author,
-						Content:   content,
-						Timestamp: ts,
-						URL:       threadURL + "#post-" + id,
-					})
-				}
-			}
-		}
-
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			traverse(c)
+	// Extract thread title
+	title := strings.TrimSpace(doc.Find("h1.p-title-value").First().Text())
+	if title == "" {
+		// Fallback: extract from <title> tag
+		rawTitle := strings.TrimSpace(doc.Find("title").First().Text())
+		if idx := strings.Index(rawTitle, " | "); idx > 0 {
+			title = rawTitle[:idx]
+		} else {
+			title = rawTitle
 		}
 	}
-
-	traverse(doc)
-
-	if len(posts) == 0 {
-		return nil, errors.New("no posts found")
-	}
-
 	if title == "" {
 		title = "ADVRider Thread"
 	}
 
+	// Extract pagination info from "Page X of Y" header
+	var lastPage, currentPage int
+	pageNavHeader := strings.TrimSpace(doc.Find("span.pageNavHeader").First().Text())
+	if pageNavHeader != "" {
+		// Parse "Page 1 of 326" format
+		var curr, last int
+		if _, err := fmt.Sscanf(pageNavHeader, "Page %d of %d", &curr, &last); err == nil {
+			currentPage = curr
+			lastPage = last
+		}
+	}
 	if currentPage == 0 {
 		currentPage = 1
+	}
+
+	// Extract posts
+	var posts []*notifier.Post
+	doc.Find("li.message").Each(func(i int, s *goquery.Selection) {
+		// Extract post ID from id attribute
+		postIDAttr, exists := s.Attr("id")
+		if !exists || !strings.HasPrefix(postIDAttr, "post-") {
+			return
+		}
+		id := strings.TrimPrefix(postIDAttr, "post-")
+
+		// Extract author
+		author := strings.TrimSpace(s.Find("a.username").First().Text())
+
+		// Extract timestamp
+		timestamp, _ := s.Find("time").First().Attr("datetime")
+
+		// Extract content from blockquote
+		content := strings.TrimSpace(s.Find("blockquote.messageText").First().Text())
+		if content == "" {
+			content = "(empty post)"
+		}
+
+		posts = append(posts, &notifier.Post{
+			ID:        id,
+			Author:    author,
+			Content:   content,
+			Timestamp: timestamp,
+			URL:       threadURL + "#post-" + id,
+		})
+	})
+
+	if len(posts) == 0 {
+		return nil, fmt.Errorf("no posts found (title=%q, lastPage=%d, currentPage=%d)", title, lastPage, currentPage)
 	}
 
 	return &Page{
@@ -354,66 +332,4 @@ func parsePage(body interface{ Read([]byte) (int, error) }, threadURL string) (*
 		LastPage:    lastPage,
 		CurrentPage: currentPage,
 	}, nil
-}
-
-func extractData(n *html.Node, author, content, timestamp *string) {
-	if n.Type == html.ElementNode {
-		// Extract author from username link
-		if n.Data == "a" && hasClass(n, "username") {
-			*author = text(n)
-		}
-
-		// Extract timestamp
-		if n.Data == "time" {
-			for _, a := range n.Attr {
-				if a.Key == "datetime" {
-					*timestamp = a.Val
-				}
-			}
-		}
-
-		// Extract post content from blockquote with class messageText
-		if n.Data == "blockquote" && hasClass(n, "messageText") {
-			*content = textContent(n)
-		}
-	}
-
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		extractData(c, author, content, timestamp)
-	}
-}
-
-func hasClass(n *html.Node, class string) bool {
-	for _, a := range n.Attr {
-		if a.Key == "class" && strings.Contains(a.Val, class) {
-			return true
-		}
-	}
-	return false
-}
-
-func text(n *html.Node) string {
-	if n.Type == html.TextNode {
-		return strings.TrimSpace(n.Data)
-	}
-	var s string
-	for c := n.FirstChild; c != nil; c = c.NextSibling {
-		s += text(c)
-	}
-	return s
-}
-
-func textContent(n *html.Node) string {
-	var b strings.Builder
-	var extract func(*html.Node)
-	extract = func(n *html.Node) {
-		if n.Type == html.TextNode {
-			b.WriteString(n.Data)
-		}
-		for c := n.FirstChild; c != nil; c = c.NextSibling {
-			extract(c)
-		}
-	}
-	extract(n)
-	return strings.TrimSpace(b.String())
 }
