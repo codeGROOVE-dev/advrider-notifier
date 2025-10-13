@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Manage Subscriptions</title>
+	<style>
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+			max-width: 800px;
+			margin: 50px auto;
+			padding: 20px;
+		}
+		h1 {
+			color: #e67e22;
+		}
+		.sub {
+			background: #f8f9fa;
+			padding: 15px;
+			margin: 10px 0;
+			border-radius: 8px;
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+		}
+		.sub-info {
+			flex: 1;
+		}
+		.thread-url {
+			color: #666;
+			font-size: 0.9em;
+			word-break: break-all;
+		}
+		button {
+			background: #e74c3c;
+			color: white;
+			padding: 8px 15px;
+			border: none;
+			border-radius: 4px;
+			cursor: pointer;
+		}
+		button:hover {
+			background: #c0392b;
+		}
+		.unsubscribe-all {
+			background: #95a5a6;
+			margin-top: 20px;
+			width: 100%;
+		}
+		.unsubscribe-all:hover {
+			background: #7f8c8d;
+		}
+		.empty {
+			text-align: center;
+			padding: 40px;
+			color: #999;
+		}
+		a {
+			color: #e67e22;
+			text-decoration: none;
+		}
+		a:hover {
+			text-decoration: underline;
+		}
+		.footer {
+			text-align: center;
+			margin-top: 30px;
+		}
+	</style>
+</head>
+<body>
+	<h1>Manage Subscriptions</h1>
+	<p>Email: <strong>{{.Email}}</strong></p>
+	{{if .Threads}}
+		{{range .Threads}}
+		<div class="sub">
+			<div class="sub-info">
+				<div class="thread-url"><a href="{{.ThreadURL}}" target="_blank" rel="noopener noreferrer">{{.ThreadURL}}</a></div>
+				<div style="color: #999; font-size: 0.85em; margin-top: 5px;">Subscribed: {{.CreatedAt}}</div>
+			</div>
+			<form method="POST" style="margin: 0;">
+				<input type="hidden" name="action" value="unsubscribe">
+				<input type="hidden" name="token" value="{{$.Token}}">
+				<input type="hidden" name="thread_id" value="{{.ThreadID}}">
+				<button type="submit">Unsubscribe</button>
+			</form>
+		</div>
+		{{end}}
+		<form method="POST" style="text-align: center;">
+			<input type="hidden" name="action" value="unsubscribe_all">
+			<input type="hidden" name="token" value="{{.Token}}">
+			<button type="submit" class="unsubscribe-all">Unsubscribe from All Threads</button>
+		</form>
+	{{else}}
+		<div class="empty">
+			<p>No active subscriptions found.</p>
+			<p><a href="/">Subscribe to a thread</a></p>
+		</div>
+	{{end}}
+	<p class="footer"><a href="/">Subscribe to another thread</a></p>
+</body>
+</html>

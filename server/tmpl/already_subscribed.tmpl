@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>Already Subscribed</title>
+	<style>
+		body {
+			font-family: sans-serif;
+			max-width: 600px;
+			margin: 50px auto;
+			padding: 20px;
+		}
+		.info {
+			background: #d1ecf1;
+			color: #0c5460;
+			padding: 20px;
+			border-radius: 8px;
+		}
+		a {
+			color: #e67e22;
+		}
+	</style>
+</head>
+<body>
+	<div class="info">
+		<h2>Already Subscribed</h2>
+		<p>The email <strong>{{.Email}}</strong> is already subscribed to this thread.</p>
+		<p><a href="/">Subscribe to another thread</a></p>
+	</div>
+</body>
+</html>

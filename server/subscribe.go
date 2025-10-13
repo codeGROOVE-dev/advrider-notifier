@@ -1,12 +1,14 @@
-package main
+package server
 
 import (
+	"advrider-notifier/pkg/notifier"
+	"fmt"
 	"net/http"
 	"strings"
 	"time"
 )
 
-func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -14,9 +16,9 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 
 	// Rate limiting by IP
 	ip := clientIP(r)
-	if !subscribeRateLimiter.allow(ip) {
-		m.logger.Warn("Rate limit exceeded", "ip", ip)
-		http.Error(w, "Too many subscription requests. Please try again later.", http.StatusTooManyRequests)
+	if !globalRateLimiter.allow(ip) {
+		s.logger.Warn("Rate limit exceeded", "ip", ip)
+		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
 		return
 	}
 
@@ -52,19 +54,19 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify thread exists by fetching it
-	post, err := m.fetchLatestPost(r.Context(), baseThreadURL)
+	post, err := s.scraper.LatestPost(r.Context(), baseThreadURL)
 	if err != nil {
-		m.logger.Warn("Failed to verify thread", "url", baseThreadURL, "error", err)
+		s.logger.Warn("Failed to verify thread", "url", baseThreadURL, "error", err)
 
 		// Check if it's a 403 Forbidden error (login-required forum)
-		if isHTTP403Error(err) {
+		if s.isHTTP403(err) {
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusForbidden)
 			if err := templates.ExecuteTemplate(w, "forbidden.tmpl", map[string]string{
 				"Email":     email,
 				"ThreadURL": threadURL,
 			}); err != nil {
-				m.logger.Error("Failed to render template", "template", "forbidden.tmpl", "error", err)
+				s.logger.Error("Failed to render template", "template", "forbidden.tmpl", "error", err)
 				http.Error(w, "This thread is in a login-required forum (like Jo Momma) and cannot be monitored. We apologize for the inconvenience.", http.StatusForbidden)
 			}
 			return
@@ -75,25 +77,20 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Load or create subscription
-	sub, err := m.loadSubscription(r.Context(), subscriptionKey(email))
+	sub, err := s.store.LoadByEmail(r.Context(), email)
 	if err != nil {
 		// Check if it's a "not found" error
-		if isNotFoundError(err) {
-			// Create new subscription
-			token, err := generateToken()
-			if err != nil {
-				m.logger.Error("Failed to generate token", "error", err)
-				http.Error(w, "Internal server error", http.StatusInternalServerError)
-				return
-			}
+		if s.isNotFound(err) {
+			// Create new subscription with deterministic token from email
+			token := s.store.TokenFromEmail(email)
 
-			sub = &Subscription{
+			sub = &notifier.Subscription{
 				Email:   email,
 				Token:   token,
-				Threads: make(map[string]*Thread),
+				Threads: make(map[string]*notifier.Thread),
 			}
 		} else {
-			m.logger.Error("Failed to load subscription", "error", err)
+			s.logger.Error("Failed to load subscription", "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
 		}
@@ -107,9 +104,17 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		w.WriteHeader(http.StatusOK)
 		if err := templates.ExecuteTemplate(w, "already_subscribed.tmpl", map[string]string{"Email": email}); err != nil {
-			m.logger.Error("Failed to render template", "template", "already_subscribed.tmpl", "error", err)
+			s.logger.Error("Failed to render template", "template", "already_subscribed.tmpl", "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 		}
+		return
+	}
+
+	// Enforce thread limit per user (prevent resource exhaustion)
+	const maxThreadsPerUser = 100
+	if len(sub.Threads) >= maxThreadsPerUser {
+		s.logger.Warn("Thread limit exceeded", "email", email, "current_count", len(sub.Threads))
+		http.Error(w, fmt.Sprintf("Maximum thread limit reached (%d threads per user)", maxThreadsPerUser), http.StatusBadRequest)
 		return
 	}
 
@@ -122,7 +127,7 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Add thread to subscription
-	sub.Threads[threadID] = &Thread{
+	sub.Threads[threadID] = &notifier.Thread{
 		ThreadURL:    baseThreadURL,
 		ThreadID:     threadID,
 		LastPostID:   post.ID,
@@ -131,20 +136,20 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    time.Now().UTC(),
 	}
 
-	if err := m.saveSubscription(r.Context(), sub); err != nil {
-		m.logger.Error("Failed to save subscription", "error", err)
+	if err := s.store.Save(r.Context(), sub); err != nil {
+		s.logger.Error("Failed to save subscription", "error", err)
 		http.Error(w, "Failed to create subscription", http.StatusInternalServerError)
 		return
 	}
 
 	// Send welcome email
 	userAgent := r.Header.Get("User-Agent")
-	if err := m.sendWelcomeEmail(r.Context(), sub, sub.Threads[threadID], ip, userAgent); err != nil {
+	if err := s.emailer.SendWelcome(r.Context(), sub, sub.Threads[threadID], ip, userAgent); err != nil {
 		// Log error but don't fail the subscription
-		m.logger.Warn("Failed to send welcome email", "email", email, "error", err)
+		s.logger.Warn("Failed to send welcome email", "email", email, "error", err)
 	}
 
-	m.logger.Info("Subscription created", "email", email, "thread_id", threadID, "ip", ip)
+	s.logger.Info("Subscription created", "email", email, "thread_id", threadID, "ip", ip)
 
 	// Set cookie to remember email address
 	setEmailCookie(w, email)
@@ -153,7 +158,7 @@ func (m *Monitor) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
 	if err := templates.ExecuteTemplate(w, "subscribed.tmpl", map[string]string{"Email": email}); err != nil {
-		m.logger.Error("Failed to render template", "template", "subscribed.tmpl", "error", err)
+		s.logger.Error("Failed to render template", "template", "subscribed.tmpl", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }

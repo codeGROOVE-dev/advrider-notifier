@@ -1,4 +1,4 @@
-package main
+package server
 
 import (
 	"crypto/subtle"
@@ -6,7 +6,15 @@ import (
 	"net/url"
 )
 
-func (*Monitor) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
+	// Rate limiting by IP to prevent token enumeration
+	ip := clientIP(r)
+	if !globalRateLimiter.allow(ip) {
+		s.logger.Warn("Rate limit exceeded", "ip", ip)
+		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
+		return
+	}
+
 	// Redirect to manage page with token
 	token := r.URL.Query().Get("token")
 	if token == "" || len(token) != 64 {
@@ -17,17 +25,25 @@ func (*Monitor) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/manage?token="+url.QueryEscape(token), http.StatusSeeOther)
 }
 
-func (m *Monitor) handleManage(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleManage(w http.ResponseWriter, r *http.Request) {
+	// Rate limiting by IP to prevent token enumeration
+	ip := clientIP(r)
+	if !globalRateLimiter.allow(ip) {
+		s.logger.Warn("Rate limit exceeded", "ip", ip)
+		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
+		return
+	}
+
 	token := r.URL.Query().Get("token")
 	if token == "" || len(token) != 64 {
 		http.Error(w, "Invalid or missing token", http.StatusBadRequest)
 		return
 	}
 
-	// Find subscription by token (constant-time comparison)
-	sub, err := m.findSubscriptionByToken(r.Context(), token)
+	// Find subscription by token
+	sub, err := s.store.LoadByToken(r.Context(), token)
 	if err != nil {
-		m.logger.Warn("Subscription not found for token", "error", err)
+		s.logger.Warn("Subscription not found for token", "error", err)
 		http.Error(w, "Subscription not found or token expired", http.StatusNotFound)
 		return
 	}
@@ -49,20 +65,20 @@ func (m *Monitor) handleManage(w http.ResponseWriter, r *http.Request) {
 
 			if len(sub.Threads) == 0 {
 				// No threads left, delete subscription entirely
-				if err := m.deleteSubscription(r.Context(), sub.Email); err != nil {
-					m.logger.Error("Failed to delete subscription", "error", err)
+				if err := s.store.Delete(r.Context(), sub.Email); err != nil {
+					s.logger.Error("Failed to delete subscription", "error", err)
 					http.Error(w, "Failed to unsubscribe", http.StatusInternalServerError)
 					return
 				}
-				m.logger.Info("All subscriptions removed", "email", sub.Email)
+				s.logger.Info("All subscriptions removed", "email", sub.Email)
 			} else {
 				// Save updated subscription
-				if err := m.saveSubscription(r.Context(), sub); err != nil {
-					m.logger.Error("Failed to save subscription", "error", err)
+				if err := s.store.Save(r.Context(), sub); err != nil {
+					s.logger.Error("Failed to save subscription", "error", err)
 					http.Error(w, "Failed to unsubscribe", http.StatusInternalServerError)
 					return
 				}
-				m.logger.Info("Thread unsubscribed", "email", sub.Email, "thread_id", threadID)
+				s.logger.Info("Thread unsubscribed", "email", sub.Email, "thread_id", threadID)
 			}
 
 			// Redirect back to manage page
@@ -71,18 +87,18 @@ func (m *Monitor) handleManage(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if action == "unsubscribe_all" {
-			if err := m.deleteSubscription(r.Context(), sub.Email); err != nil {
-				m.logger.Error("Failed to delete subscription", "error", err)
+			if err := s.store.Delete(r.Context(), sub.Email); err != nil {
+				s.logger.Error("Failed to delete subscription", "error", err)
 				http.Error(w, "Failed to unsubscribe", http.StatusInternalServerError)
 				return
 			}
 
-			m.logger.Info("All subscriptions removed", "email", sub.Email)
+			s.logger.Info("All subscriptions removed", "email", sub.Email)
 
 			w.Header().Set("Content-Type", "text/html; charset=utf-8")
 			w.WriteHeader(http.StatusOK)
 			if err := templates.ExecuteTemplate(w, "unsubscribed.tmpl", nil); err != nil {
-				m.logger.Error("Failed to render template", "template", "unsubscribed.tmpl", "error", err)
+				s.logger.Error("Failed to render template", "template", "unsubscribed.tmpl", "error", err)
 				http.Error(w, "Internal server error", http.StatusInternalServerError)
 			}
 			return
@@ -117,7 +133,7 @@ func (m *Monitor) handleManage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := templates.ExecuteTemplate(w, "manage.tmpl", data); err != nil {
-		m.logger.Error("Failed to render template", "template", "manage.tmpl", "error", err)
+		s.logger.Error("Failed to render template", "template", "manage.tmpl", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
 }

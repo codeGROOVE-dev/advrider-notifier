@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+	<title>ADVRider Notifier</title>
+	<style>
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+		}
+		body {
+			font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+			background: #1a1a1a;
+			min-height: 100vh;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			padding: 20px;
+			-webkit-font-smoothing: antialiased;
+		}
+		.container {
+			background: white;
+			border-radius: 16px;
+			box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+			padding: 48px;
+			max-width: 540px;
+			width: 100%;
+		}
+		.logo {
+			text-align: center;
+			margin-bottom: 32px;
+		}
+		.logo img {
+			width: 120px;
+			height: auto;
+		}
+		h1 {
+			font-size: 32px;
+			font-weight: 600;
+			color: #1a1a1a;
+			text-align: center;
+			margin-bottom: 8px;
+			letter-spacing: -0.5px;
+		}
+		.subtitle {
+			text-align: center;
+			color: #666;
+			font-size: 17px;
+			margin-bottom: 40px;
+			line-height: 1.5;
+		}
+		form {
+			margin-bottom: 32px;
+		}
+		label {
+			display: block;
+			margin-bottom: 10px;
+			font-size: 15px;
+			font-weight: 500;
+			color: #1a1a1a;
+		}
+		.input-group {
+			margin-bottom: 24px;
+		}
+		input[type="url"],
+		input[type="email"] {
+			width: 100%;
+			padding: 16px;
+			border: 1px solid #ddd;
+			border-radius: 8px;
+			font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+			font-size: 16px;
+			background: #f9f9f9;
+			transition: all 0.2s ease;
+			color: #1a1a1a;
+		}
+		input[type="url"] {
+			font-size: 14px;
+			font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
+			word-break: break-all;
+		}
+		input:focus {
+			outline: none;
+			border-color: #e67e22;
+			background: white;
+			box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.1);
+		}
+		input::placeholder {
+			color: #999;
+		}
+		button {
+			width: 100%;
+			background: #e67e22;
+			color: white;
+			padding: 16px;
+			border: none;
+			border-radius: 8px;
+			cursor: pointer;
+			font-size: 17px;
+			font-weight: 600;
+			transition: all 0.2s ease;
+			box-shadow: 0 4px 12px rgba(230, 126, 34, 0.3);
+		}
+		button:hover {
+			background: #d35400;
+			transform: translateY(-1px);
+			box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
+		}
+		button:active {
+			transform: translateY(0);
+		}
+		.features {
+			margin-top: 32px;
+			padding-top: 32px;
+			border-top: 1px solid #eee;
+		}
+		.feature {
+			display: flex;
+			align-items: flex-start;
+			margin-bottom: 16px;
+			font-size: 15px;
+			color: #555;
+		}
+		.feature:last-child {
+			margin-bottom: 0;
+		}
+		.feature::before {
+			content: "✓";
+			color: #e67e22;
+			font-weight: 700;
+			margin-right: 12px;
+			font-size: 18px;
+		}
+		.footer {
+			margin-top: 32px;
+			padding-top: 24px;
+			border-top: 1px solid #eee;
+			text-align: center;
+			font-size: 14px;
+			color: #999;
+		}
+		.footer a {
+			color: #e67e22;
+			text-decoration: none;
+		}
+		.footer a:hover {
+			text-decoration: underline;
+		}
+		@media (max-width: 600px) {
+			.container {
+				padding: 32px 24px;
+			}
+			h1 {
+				font-size: 28px;
+			}
+		}
+	</style>
+</head>
+<body>
+	<div class="container">
+		<div class="logo">
+			<img src="/media/logo.png" alt="ADVRider Notifier">
+		</div>
+		<h1>ADVRider Notifier</h1>
+		<p class="subtitle">Reliable email notifications for new posts on your favorite threads</p>
+		<form action="/subscribe" method="POST">
+			<div class="input-group">
+				<label for="thread_url">Thread URL</label>
+				<input type="url" id="thread_url" name="thread_url" required placeholder="https://advrider.com/f/threads/..." maxlength="500">
+			</div>
+			<div class="input-group">
+				<label for="email">Email Address</label>
+				<input type="email" id="email" name="email" required placeholder="you@example.com" maxlength="254"{{if .SavedEmail}} value="{{.SavedEmail}}"{{end}}>
+			</div>
+			<button type="submit">Subscribe</button>
+		</form>
+		<div class="footer">
+			Made with 🪿 by <a href="https://codegroove.com">codeGROOVE llc</a> • Contact <a href="https://advrider.com/f/members/helixblue.21963/">helixblue</a> with questions
+		</div>
+	</div>
+</body>
+</html>

@@ -1,7 +1,8 @@
 .PHONY: build test run clean deploy lint
 
 build:
-	go build -o advrider-notifier .
+	mkdir -p out
+	go build -o out/advrider-notifier .
 
 test:
 	go test -v ./...
@@ -10,7 +11,7 @@ run:
 	go run main.go
 
 clean:
-	rm -f advrider-notifier
+	rm -rf out/advrider-notifier
 
 deploy:
 	./hacks/deploy.sh
