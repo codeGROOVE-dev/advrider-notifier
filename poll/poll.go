@@ -12,7 +12,7 @@ import (
 	"advrider-notifier/pkg/notifier"
 )
 
-const maxPostsPerEmail = 5 // Safety limit: max posts to include in a single email
+const maxPostsPerEmail = 10 // Safety limit: max posts to include in a single email
 
 // Scraper interface for fetching thread data.
 type Scraper interface {
@@ -374,6 +374,7 @@ func (m *Monitor) checkThreadForSubscribers(ctx context.Context, info *threadChe
 
 		if len(newPosts) > 0 {
 			// Apply safety limit
+			originalCount := len(newPosts)
 			if len(newPosts) > maxPostsPerEmail {
 				m.logger.Warn("Too many new posts, limiting to most recent",
 					"cycle", m.cycleNumber,
@@ -385,13 +386,15 @@ func (m *Monitor) checkThreadForSubscribers(ctx context.Context, info *threadChe
 				newPosts = newPosts[len(newPosts)-maxPostsPerEmail:]
 			}
 
-			// Send notification
+			// Send notification with all new posts in a single email
 			m.logger.Info("Sending notification",
 				"cycle", m.cycleNumber,
 				"email", email,
 				"thread_url", threadURL,
 				"thread_title", thread.ThreadTitle,
-				"new_posts", len(newPosts),
+				"new_posts_count", len(newPosts),
+				"original_count", originalCount,
+				"capped", originalCount > maxPostsPerEmail,
 				"previous_last_post", thread.LastPostID,
 				"new_last_post", latestPost.ID)
 

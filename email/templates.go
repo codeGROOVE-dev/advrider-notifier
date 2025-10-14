@@ -19,7 +19,7 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	b.WriteString(".header { border-bottom: 2px solid #e67e22; padding-bottom: 10px; margin-bottom: 20px; }\n")
 	b.WriteString(".post { margin-bottom: 30px; padding-bottom: 20px; border-bottom: 1px solid #ecf0f1; }\n")
 	b.WriteString(".post:last-of-type { border-bottom: none; }\n")
-	b.WriteString(".author { color: #e67e22; font-weight: 600; }\n")
+	b.WriteString(".author { color: #e67e22; font-weight: 600; font-size: 1.2em; }\n")
 	b.WriteString(".timestamp { color: #7f8c8d; font-size: 0.9em; }\n")
 	b.WriteString(".content { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 15px 0; }\n")
 	b.WriteString(".content img { max-width: 100%; height: auto; margin: 10px 0; display: block; }\n")
