@@ -5,11 +5,12 @@ import "time"
 
 // Post represents a single post in a thread.
 type Post struct {
-	ID        string
-	Author    string
-	Content   string
-	Timestamp string
-	URL       string
+	ID          string
+	Author      string
+	Content     string // Plain text content for fallback
+	HTMLContent string // HTML content with images and formatting
+	Timestamp   string
+	URL         string
 }
 
 // Thread represents a monitored thread with its state.

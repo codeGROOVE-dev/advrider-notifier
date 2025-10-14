@@ -87,6 +87,14 @@ func main() {
 		storageSvc := storage.New(nil, "", localStorage, []byte(salt), logger)
 		pollSvc := poll.New(scraperSvc, storageSvc, emailSender, logger)
 
+		// Run initial polling cycle on startup
+		logger.Info("Running initial polling cycle on startup")
+		if err := pollSvc.CheckAll(ctx); err != nil {
+			logger.Warn("Initial polling cycle failed", "error", err)
+		} else {
+			logger.Info("Initial polling cycle completed successfully")
+		}
+
 		// Create and run server
 		srv := server.New(&server.Config{
 			Scraper:    scraperSvc,
@@ -148,6 +156,14 @@ func main() {
 	scraperSvc := scraper.New(httpClient, logger)
 	storageSvc := storage.New(storageClient, bucket, "", []byte(salt), logger)
 	pollSvc := poll.New(scraperSvc, storageSvc, emailSender, logger)
+
+	// Run initial polling cycle on startup
+	logger.Info("Running initial polling cycle on startup")
+	if err := pollSvc.CheckAll(ctx); err != nil {
+		logger.Warn("Initial polling cycle failed", "error", err)
+	} else {
+		logger.Info("Initial polling cycle completed successfully")
+	}
 
 	// Create server
 	srv := server.New(&server.Config{

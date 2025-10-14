@@ -313,17 +313,25 @@ func parsePage(body interface{ Read([]byte) (int, error) }, threadURL string) (*
 		timestamp, _ := s.Find("time").First().Attr("datetime")
 
 		// Extract content from blockquote
-		content := strings.TrimSpace(s.Find("blockquote.messageText").First().Text())
+		blockquote := s.Find("blockquote.messageText").First()
+		content := strings.TrimSpace(blockquote.Text())
 		if content == "" {
 			content = "(empty post)"
 		}
 
+		// Extract HTML content with images
+		htmlContent, err := blockquote.Html()
+		if err != nil || htmlContent == "" {
+			htmlContent = content // Fallback to plain text
+		}
+
 		posts = append(posts, &notifier.Post{
-			ID:        id,
-			Author:    author,
-			Content:   content,
-			Timestamp: timestamp,
-			URL:       threadURL + "#post-" + id,
+			ID:          id,
+			Author:      author,
+			Content:     content,
+			HTMLContent: htmlContent,
+			Timestamp:   timestamp,
+			URL:         threadURL + "#post-" + id,
 		})
 	})
 

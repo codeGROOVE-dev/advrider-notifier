@@ -118,10 +118,17 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Enforce thread limit per user (prevent resource exhaustion)
-	const maxThreadsPerUser = 100
+	const maxThreadsPerUser = 20
 	if len(sub.Threads) >= maxThreadsPerUser {
 		s.logger.Warn("Thread limit exceeded", "email", email, "current_count", len(sub.Threads))
 		http.Error(w, fmt.Sprintf("Maximum thread limit reached (%d threads per user)", maxThreadsPerUser), http.StatusBadRequest)
+		return
+	}
+
+	// Validate that we have a valid post ID before creating subscription
+	if post.ID == "" {
+		s.logger.Error("Latest post has empty ID", "url", baseThreadURL, "title", threadTitle)
+		http.Error(w, "Could not determine latest post ID - please try again", http.StatusInternalServerError)
 		return
 	}
 
@@ -132,6 +139,13 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 			lastPostTime = t
 		}
 	}
+
+	s.logger.Info("Creating subscription with latest post ID",
+		"email", email,
+		"thread_id", threadID,
+		"thread_title", threadTitle,
+		"last_post_id", post.ID,
+		"last_post_time", lastPostTime.Format(time.RFC3339))
 
 	// Add thread to subscription
 	sub.Threads[threadID] = &notifier.Thread{
