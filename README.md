@@ -8,6 +8,10 @@ Email notifications for ADVRider threads. Built for Cloud Run, written in Go.
 
 ADVRider's built-in notifications only email you once after your last visit. This keeps the conversation going by emailing every new post until you unsubscribe.
 
+## Usage
+
+Visit https://advrider-notifier.codegroove.toys/ for the production instance
+
 ## Features
 
 - **Respectful polling:** Adaptive intervals from ~10 minutes (active threads) to 4 hours using exponential backoff. Minimum poll time is defined as `5min × 2^(hours_since_post / 3)`, with a 10-minute polling loop; shared fetch for all subscribers to minimize load.
@@ -23,10 +27,5 @@ go run .
 
 Server will be available at http://localhost:8080
 
-## License
-
-Apache 2.0 - see LICENSE file
-
 ---
-
 Built with 🪿 by [codeGROOVE llc](https://codegroove.dev)
