@@ -12,7 +12,7 @@ ADVRider's built-in notifications only email you once after your last visit. Thi
 
 Subscribe to any ADVRider thread and get emails when new posts appear.
 
-**Respectful polling:** Adaptive intervals from 5 minutes (active threads) to 4 hours (quiet threads) using exponential backoff. Each thread is scraped once per cycle regardless of subscriber count, minimizing server load.
+**Respectful polling:** Adaptive intervals from 5 minutes (active threads) to 4 hours (quiet threads) using exponential backoff: `5min × 2^(hours_since_post / 3)`. Each thread is scraped once per cycle regardless of subscriber count, minimizing server load.
 
 **User limits:** Maximum 20 threads per email address. Notifications batch up to 10 posts to prevent spam.
 
@@ -38,8 +38,6 @@ Visit http://localhost:8080 and subscribe to a thread.
 ```
 
 Storage: Local filesystem (`./data`) or GCS. Email via Brevo API (auto-mocks when `BREVO_API_KEY` not set).
-
-Polling interval: `5min × 2^(hours_since_post / 3)`, capped at 4 hours.
 
 ## License
 
