@@ -259,6 +259,14 @@ func (m *Monitor) checkThreadForSubscribers(
 
 	for email, sub := range info.subscribers {
 		thread := sub.Threads[info.threadID]
+		if thread == nil {
+			m.logger.Error("CRITICAL: Thread not found in subscriber's thread map - data corruption or logic error",
+				"cycle", m.cycleNumber,
+				"email", email,
+				"thread_id", info.threadID,
+				"thread_url", threadURL)
+			continue
+		}
 
 		m.logger.Info("Processing subscriber",
 			"cycle", m.cycleNumber,
@@ -272,7 +280,7 @@ func (m *Monitor) checkThreadForSubscribers(
 
 		// First check for this subscriber - just record the latest post ID
 		if thread.LastPostID == "" {
-			if m.saveInitialState(ctx, sub, email, threadURL, latestPost.ID, savedEmails) {
+			if m.saveInitialState(ctx, sub, email, info.threadID, threadURL, latestPost.ID, savedEmails) {
 				hasUpdates = true
 			}
 			continue
@@ -286,7 +294,7 @@ func (m *Monitor) checkThreadForSubscribers(
 				hasUpdates = true
 			}
 		} else {
-			m.saveStateNoNewPosts(ctx, sub, email, threadURL, savedEmails)
+			m.saveStateNoNewPosts(ctx, sub, email, info.threadID, threadURL, savedEmails)
 		}
 	}
 
@@ -326,6 +334,13 @@ func (m *Monitor) fetchThreadPosts(
 		// Update thread title for all subscribers if not set
 		for _, sub := range info.subscribers {
 			thread := sub.Threads[info.threadID]
+			if thread == nil {
+				m.logger.Error("CRITICAL: Thread not found when updating title - data corruption",
+					"cycle", m.cycleNumber,
+					"thread_id", info.threadID,
+					"thread_url", threadURL)
+				continue
+			}
 			if thread.ThreadTitle == "" {
 				thread.ThreadTitle = title
 			}
@@ -353,9 +368,15 @@ func (m *Monitor) fetchThreadPosts(
 }
 
 // updateLastPolledForAllSubscribers updates LastPolledAt for all subscribers when no posts are found.
-func (*Monitor) updateLastPolledForAllSubscribers(info *threadCheckInfo, now time.Time) {
+func (m *Monitor) updateLastPolledForAllSubscribers(info *threadCheckInfo, now time.Time) {
 	for _, sub := range info.subscribers {
 		thread := sub.Threads[info.threadID]
+		if thread == nil {
+			m.logger.Error("CRITICAL: Thread not found when updating poll time - data corruption",
+				"cycle", m.cycleNumber,
+				"thread_id", info.threadID)
+			continue
+		}
 		thread.LastPolledAt = now
 	}
 }
@@ -378,10 +399,18 @@ func (m *Monitor) updateSubscriberTimestamps(thread *notifier.Thread, now, lates
 func (m *Monitor) saveInitialState(
 	ctx context.Context,
 	sub *notifier.Subscription,
-	email, threadURL, postID string,
+	email, threadID, threadURL, postID string,
 	savedEmails map[string]bool,
 ) bool {
-	thread := sub.Threads[threadURL]
+	thread := sub.Threads[threadID]
+	if thread == nil {
+		m.logger.Error("CRITICAL: Thread not found when saving initial state - data corruption",
+			"cycle", m.cycleNumber,
+			"email", email,
+			"thread_id", threadID,
+			"thread_url", threadURL)
+		return false
+	}
 	thread.LastPostID = postID
 
 	m.logger.Info("Saving initial state for subscriber",
@@ -515,8 +544,16 @@ func (m *Monitor) sendNotificationAndSave(ctx context.Context, sub *notifier.Sub
 }
 
 // saveStateNoNewPosts saves state when there are no new posts for a subscriber.
-func (m *Monitor) saveStateNoNewPosts(ctx context.Context, sub *notifier.Subscription, email, threadURL string, savedEmails map[string]bool) {
-	thread := sub.Threads[threadURL]
+func (m *Monitor) saveStateNoNewPosts(ctx context.Context, sub *notifier.Subscription, email, threadID, threadURL string, savedEmails map[string]bool) {
+	thread := sub.Threads[threadID]
+	if thread == nil {
+		m.logger.Error("CRITICAL: Thread not found when saving state (no new posts) - data corruption",
+			"cycle", m.cycleNumber,
+			"email", email,
+			"thread_id", threadID,
+			"thread_url", threadURL)
+		return
+	}
 
 	m.logger.Info("No new posts - saving state",
 		"cycle", m.cycleNumber,

@@ -17,8 +17,8 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	b.WriteString("<style>\n")
 	b.WriteString("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; background: #fff; }\n")
-	b.WriteString(".post { margin-bottom: 30px; padding-bottom: 30px; border-bottom: 2px solid #e67e22; }\n")
-	b.WriteString(".post:last-of-type { border-bottom: none; padding-bottom: 0; margin-bottom: 0; }\n")
+	b.WriteString(".post { padding: 24px 0; border-bottom: 2px solid #e67e22; }\n")
+	b.WriteString(".post:last-of-type { border-bottom: none; padding-bottom: 0; }\n")
 	b.WriteString(".post:first-of-type { padding-top: 0; }\n")
 	b.WriteString(".meta { margin-bottom: 12px; }\n")
 	b.WriteString(".post-number { color: #7f8c8d; font-weight: 500; font-size: 1.1em; text-decoration: none; }\n")
@@ -28,7 +28,7 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	b.WriteString(".content { margin: 15px 0; }\n")
 	b.WriteString(".content img { max-width: 100%; height: auto; margin: 10px 0; display: block; }\n")
 	b.WriteString(".content blockquote { border-left: 3px solid #ddd; padding-left: 15px; margin: 10px 0; color: #666; font-size: 0.95em; }\n")
-	b.WriteString(".footer { margin-top: 30px; padding-top: 15px; font-size: 0.9em; color: #7f8c8d; }\n")
+	b.WriteString(".footer { margin-top: 24px; padding-top: 12px; font-size: 0.9em; color: #7f8c8d; }\n")
 	b.WriteString(".footer.with-border { border-top: 1px solid #ddd; }\n")
 	b.WriteString(".footer a { color: #7f8c8d; text-decoration: underline; margin: 0 8px; }\n")
 	b.WriteString(".footer a:first-child { margin-left: 0; }\n")
@@ -90,10 +90,10 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	if len(posts) > 0 && posts[len(posts)-1].URL != "" {
 		threadLink = posts[len(posts)-1].URL
 	}
-	b.WriteString(fmt.Sprintf("<a href=\"%s\">View thread</a>\n", escapeHTML(threadLink)))
+	b.WriteString(fmt.Sprintf("<a href=\"%s\">View thread on ADVrider</a>\n", escapeHTML(threadLink)))
 
 	manageURL := fmt.Sprintf("%s/manage?token=%s", s.baseURL, url.QueryEscape(sub.Token))
-	b.WriteString(fmt.Sprintf("<a href=\"%s\">Manage</a>\n", escapeHTML(manageURL)))
+	b.WriteString(fmt.Sprintf("<a href=\"%s\">Manage subscriptions</a>\n", escapeHTML(manageURL)))
 	b.WriteString("</div>\n")
 
 	b.WriteString("</body>\n</html>")
@@ -144,9 +144,9 @@ func (s *Sender) formatWelcomeBody(sub *notifier.Subscription, thread *notifier.
 	b.WriteString("</div>\n")
 
 	b.WriteString("<div class=\"footer\">\n")
-	b.WriteString(fmt.Sprintf("<a href=\"%s\">View thread</a>\n", escapeHTML(thread.ThreadURL)))
+	b.WriteString(fmt.Sprintf("<a href=\"%s\">View thread on ADVrider</a>\n", escapeHTML(thread.ThreadURL)))
 	b.WriteString(" &bull; \n")
-	b.WriteString(fmt.Sprintf("<a href=\"%s\">Manage</a>\n", escapeHTML(manageURL)))
+	b.WriteString(fmt.Sprintf("<a href=\"%s\">Manage subscriptions</a>\n", escapeHTML(manageURL)))
 	b.WriteString("</div>\n")
 
 	b.WriteString("</body>\n</html>")
