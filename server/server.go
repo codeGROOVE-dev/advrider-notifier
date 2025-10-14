@@ -2,6 +2,7 @@
 package server
 
 import (
+	"advrider-notifier/pkg/notifier"
 	"context"
 	"embed"
 	"errors"
@@ -16,8 +17,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
-	"advrider-notifier/pkg/notifier"
 )
 
 //go:embed tmpl/*.tmpl

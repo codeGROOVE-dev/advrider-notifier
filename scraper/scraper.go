@@ -2,6 +2,7 @@
 package scraper
 
 import (
+	"advrider-notifier/pkg/notifier"
 	"context"
 	"errors"
 	"fmt"
@@ -9,8 +10,6 @@ import (
 	"net/http"
 	"strings"
 	"time"
-
-	"advrider-notifier/pkg/notifier"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/codeGROOVE-dev/retry"
@@ -69,14 +68,14 @@ func (s *Scraper) LatestPost(ctx context.Context, threadURL string) (*notifier.P
 // SmartFetch fetches posts efficiently using multi-page strategy.
 // Returns posts, title, and error.
 func (s *Scraper) SmartFetch(ctx context.Context, threadURL string, lastSeenPostID string) ([]*notifier.Post, string, error) {
-	page, err := s.smartFetch(ctx, threadURL, lastSeenPostID)
+	page, err := s.fetchWithStrategy(ctx, threadURL, lastSeenPostID)
 	if err != nil {
 		return nil, "", err
 	}
 	return page.Posts, page.Title, nil
 }
 
-func (s *Scraper) smartFetch(ctx context.Context, threadURL string, lastSeenPostID string) (*Page, error) {
+func (s *Scraper) fetchWithStrategy(ctx context.Context, threadURL string, lastSeenPostID string) (*Page, error) {
 	s.logger.Info("Starting smart thread fetch", "url", threadURL, "last_seen_post", lastSeenPostID)
 
 	// Step 1: Fetch first page to get title and last page number

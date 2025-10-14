@@ -2,14 +2,13 @@
 package poll
 
 import (
+	"advrider-notifier/pkg/notifier"
 	"context"
 	"fmt"
 	"log/slog"
 	"math"
 	"sync"
 	"time"
-
-	"advrider-notifier/pkg/notifier"
 )
 
 const maxPostsPerEmail = 10 // Safety limit: max posts to include in a single email
@@ -278,12 +277,17 @@ func (m *Monitor) checkThreadForSubscribers(
 		// Update poll time and latest post time for this subscriber
 		m.updateSubscriberTimestamps(thread, now, latestPostTime, email, threadURL)
 
-		// First check for this subscriber - just record the latest post ID
+		// First check for this subscriber - just record the latest post ID without notification
 		if thread.LastPostID == "" {
-			if m.saveInitialState(ctx, sub, email, info.threadID, threadURL, latestPost.ID, savedEmails) {
-				hasUpdates = true
-			}
-			continue
+			thread.LastPostID = latestPost.ID
+			m.logger.Info("New subscriber - recording initial state without notification",
+				"cycle", m.cycleNumber,
+				"email", email,
+				"thread_url", threadURL,
+				"thread_title", thread.ThreadTitle,
+				"initial_post_id", latestPost.ID)
+			m.saveStateNoNewPosts(ctx, sub, email, info.threadID, threadURL, savedEmails)
+			continue // Move to next subscriber (other subscribers will still be notified)
 		}
 
 		// Find new posts for this subscriber
@@ -393,49 +397,6 @@ func (m *Monitor) updateSubscriberTimestamps(thread *notifier.Thread, now, lates
 			"thread_url", threadURL,
 			"thread_title", thread.ThreadTitle)
 	}
-}
-
-// saveInitialState saves the initial state for a new subscriber.
-func (m *Monitor) saveInitialState(
-	ctx context.Context,
-	sub *notifier.Subscription,
-	email, threadID, threadURL, postID string,
-	savedEmails map[string]bool,
-) bool {
-	thread := sub.Threads[threadID]
-	if thread == nil {
-		m.logger.Error("CRITICAL: Thread not found when saving initial state - data corruption",
-			"cycle", m.cycleNumber,
-			"email", email,
-			"thread_id", threadID,
-			"thread_url", threadURL)
-		return false
-	}
-	thread.LastPostID = postID
-
-	m.logger.Info("Saving initial state for subscriber",
-		"cycle", m.cycleNumber,
-		"email", email,
-		"thread_url", threadURL,
-		"post_id", postID)
-
-	if err := m.store.Save(ctx, sub); err != nil {
-		m.logger.Error("Failed to save initial state for subscriber",
-			"cycle", m.cycleNumber,
-			"email", email,
-			"thread_url", threadURL,
-			"thread_title", thread.ThreadTitle,
-			"error", err)
-	} else {
-		savedEmails[email] = true
-		m.logger.Info("Initial post ID recorded and saved",
-			"cycle", m.cycleNumber,
-			"email", email,
-			"thread_url", threadURL,
-			"thread_title", thread.ThreadTitle,
-			"post_id", postID)
-	}
-	return true
 }
 
 // findNewPosts identifies new posts for a subscriber since their last seen post.

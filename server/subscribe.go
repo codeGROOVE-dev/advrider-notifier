@@ -1,14 +1,13 @@
 package server
 
 import (
+	"advrider-notifier/pkg/notifier"
+	"advrider-notifier/poll"
 	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
-
-	"advrider-notifier/pkg/notifier"
-	"advrider-notifier/poll"
 )
 
 //nolint:maintidx,funlen,varnamelen // HTTP handler with comprehensive validation - complexity justified for security

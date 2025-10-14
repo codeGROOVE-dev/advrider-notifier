@@ -2,6 +2,7 @@
 package storage
 
 import (
+	"advrider-notifier/pkg/notifier"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -14,8 +15,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"advrider-notifier/pkg/notifier"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"

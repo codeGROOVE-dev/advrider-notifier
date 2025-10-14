@@ -3,6 +3,11 @@
 package main
 
 import (
+	"advrider-notifier/email"
+	"advrider-notifier/poll"
+	"advrider-notifier/scraper"
+	"advrider-notifier/server"
+	"advrider-notifier/storage"
 	"context"
 	"embed"
 	"log/slog"
@@ -10,12 +15,6 @@ import (
 	"os"
 	"strings"
 	"time"
-
-	"advrider-notifier/email"
-	"advrider-notifier/poll"
-	"advrider-notifier/scraper"
-	"advrider-notifier/server"
-	"advrider-notifier/storage"
 
 	gcs "cloud.google.com/go/storage"
 	"github.com/codeGROOVE-dev/gsm"
@@ -41,7 +40,9 @@ func main() {
 	// Load SALT from GSM or environment variable
 	salt := secret(ctx, "SALT", logger)
 	if salt == "" {
-		logger.Error("SALT is not set in environment or GSM - subscription unsubscribe URLs will be guessable, allowing anyone to unsubscribe any email address. This is a CRITICAL SECURITY ISSUE.")
+		logger.Error("SALT is not set in environment or GSM",
+			"issue", "subscription unsubscribe URLs will be guessable",
+			"severity", "CRITICAL SECURITY ISSUE - anyone can unsubscribe any email address")
 		os.Exit(1)
 	}
 

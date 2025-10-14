@@ -2,10 +2,9 @@
 package email
 
 import (
+	"advrider-notifier/pkg/notifier"
 	"context"
 	"log/slog"
-
-	"advrider-notifier/pkg/notifier"
 )
 
 // Provider defines the interface for email sending implementations.

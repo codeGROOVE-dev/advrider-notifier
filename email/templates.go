@@ -1,12 +1,11 @@
 package email
 
 import (
+	"advrider-notifier/pkg/notifier"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
-
-	"advrider-notifier/pkg/notifier"
 )
 
 func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *notifier.Thread, posts []*notifier.Post) string {
@@ -96,7 +95,6 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 
 	// Footer with thread link and manage link
 	// Always add grey border to separate footer from content
-	//nolint:gocritic // %q would add extra quotes in HTML context
 	b.WriteString("<div class=\"footer with-border\">\n")
 
 	// Link to the last page with anchor to latest post (e.g., .../page-12#post-12345)
@@ -373,5 +371,5 @@ func isSafeURL(urlStr string) bool {
 		strings.HasPrefix(urlStr, "/") ||
 		strings.HasPrefix(urlStr, "./") ||
 		strings.HasPrefix(urlStr, "../") ||
-		(!strings.Contains(urlStr, ":") && len(urlStr) > 0) // relative path without protocol
+		(!strings.Contains(urlStr, ":") && urlStr != "") // relative path without protocol
 }

@@ -1,13 +1,12 @@
 package main
 
 import (
+	"advrider-notifier/email"
+	"advrider-notifier/pkg/notifier"
 	"log/slog"
 	"os"
 	"strings"
 	"testing"
-
-	"advrider-notifier/email"
-	"advrider-notifier/pkg/notifier"
 )
 
 func TestGetText(t *testing.T) {
