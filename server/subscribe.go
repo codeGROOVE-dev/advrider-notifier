@@ -11,6 +11,7 @@ import (
 	"advrider-notifier/poll"
 )
 
+//nolint:maintidx,funlen,varnamelen // HTTP handler with comprehensive validation - complexity justified for security
 func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -180,6 +181,7 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	// Trigger immediate poll to notify all existing subscribers about any new posts
 	// This runs asynchronously so we don't block the HTTP response
 	// Use background context since we don't want this tied to the HTTP request lifecycle
+	//nolint:contextcheck // Background context intentional - we don't want this tied to HTTP request lifecycle
 	go func() {
 		pollCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 		defer cancel()

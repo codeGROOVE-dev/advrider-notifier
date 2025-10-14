@@ -248,8 +248,8 @@ func TestSanitizeHTMLXSSAttempts(t *testing.T) {
 // TestSanitizeHTMLPlaceholders tests that dangerous media tags show placeholders.
 func TestSanitizeHTMLPlaceholders(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
+		name          string
+		input         string
 		shouldContain string
 	}{
 		{"iframe with URL", `<iframe src="https://youtube.com/embed/xyz"></iframe>`, "[iframe: <a href=\"https://youtube.com/embed/xyz\">"},

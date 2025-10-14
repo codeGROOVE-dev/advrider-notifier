@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *notifier.Thread, posts []*notifier.Post) string {
-	var b strings.Builder
+	var b strings.Builder //nolint:varnamelen // Standard short variable name for strings.Builder
 
 	b.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
 	b.WriteString("<meta charset=\"utf-8\">\n")
@@ -52,6 +52,7 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	for _, post := range posts {
 		b.WriteString("<div class=\"post\">\n")
 		b.WriteString("<div class=\"meta\">\n")
+		//nolint:gocritic // %q would add extra quotes in HTML context
 		b.WriteString(fmt.Sprintf("<a href=\"%s\" class=\"post-number\">#%s</a>\n", escapeHTML(post.URL), escapeHTML(post.ID)))
 		b.WriteString(fmt.Sprintf("<span class=\"author\"> &bull; %s</span>\n", escapeHTML(post.Author)))
 		if post.Timestamp != "" {
@@ -82,6 +83,7 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	if len(posts) > 1 {
 		footerClass = "footer with-border"
 	}
+	//nolint:gocritic // %q would add extra quotes in HTML context
 	b.WriteString(fmt.Sprintf("<div class=\"%s\">\n", footerClass))
 
 	// Link to the last page with anchor to latest post (e.g., .../page-12#post-12345)
@@ -90,9 +92,11 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	if len(posts) > 0 && posts[len(posts)-1].URL != "" {
 		threadLink = posts[len(posts)-1].URL
 	}
+	//nolint:gocritic // %q would add extra quotes in HTML context
 	b.WriteString(fmt.Sprintf("<a href=\"%s\">View thread on ADVrider</a>\n", escapeHTML(threadLink)))
 
 	manageURL := fmt.Sprintf("%s/manage?token=%s", s.baseURL, url.QueryEscape(sub.Token))
+	//nolint:gocritic // %q would add extra quotes in HTML context
 	b.WriteString(fmt.Sprintf("<a href=\"%s\">Manage subscriptions</a>\n", escapeHTML(manageURL)))
 	b.WriteString("</div>\n")
 
@@ -144,8 +148,10 @@ func (s *Sender) formatWelcomeBody(sub *notifier.Subscription, thread *notifier.
 	b.WriteString("</div>\n")
 
 	b.WriteString("<div class=\"footer\">\n")
+	//nolint:gocritic // %q would add extra quotes in HTML context
 	b.WriteString(fmt.Sprintf("<a href=\"%s\">View thread on ADVrider</a>\n", escapeHTML(thread.ThreadURL)))
 	b.WriteString(" &bull; \n")
+	//nolint:gocritic // %q would add extra quotes in HTML context
 	b.WriteString(fmt.Sprintf("<a href=\"%s\">Manage subscriptions</a>\n", escapeHTML(manageURL)))
 	b.WriteString("</div>\n")
 
@@ -166,6 +172,8 @@ func escapeHTML(s string) string {
 // sanitizeHTML sanitizes untrusted HTML content using a strict whitelist approach.
 // Only allows safe tags and attributes to prevent XSS, phishing, and tracking.
 // This is designed for email contexts where security is critical.
+//
+//nolint:gocognit,funlen // Security-critical HTML sanitizer - complexity justified for comprehensive safety
 func sanitizeHTML(html string) string {
 	// Whitelist of allowed tags (no scripts, forms, iframes, etc.)
 	allowedTags := map[string]bool{
@@ -190,6 +198,7 @@ func sanitizeHTML(html string) string {
 	inTag := false
 	tagStart := 0
 
+	//nolint:intrange,varnamelen // Index used for look-ahead parsing - range loop not suitable
 	for i := 0; i < len(html); i++ {
 		if html[i] == '<' {
 			if inTag {

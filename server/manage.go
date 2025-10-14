@@ -25,6 +25,7 @@ func (s *Server) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/manage?token="+url.QueryEscape(token), http.StatusSeeOther)
 }
 
+//nolint:varnamelen // Standard http.Handler parameter names
 func (s *Server) handleManage(w http.ResponseWriter, r *http.Request) {
 	// Rate limiting by IP to prevent token enumeration
 	ip := clientIP(r)
@@ -54,6 +55,7 @@ func (s *Server) handleManage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Handle unsubscribe from specific thread
+	//nolint:nestif // POST handler with CSRF validation - complexity justified for security
 	if r.Method == http.MethodPost {
 		action := r.FormValue("action")
 		threadID := r.FormValue("thread_id")

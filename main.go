@@ -52,6 +52,7 @@ func main() {
 	}
 
 	// Local development mode
+	//nolint:nestif // Local vs production initialization - complexity justified for environment handling
 	if localStorage != "" {
 		logger.Info("Running in local development mode", "storage_path", localStorage)
 		if baseURL == "" {

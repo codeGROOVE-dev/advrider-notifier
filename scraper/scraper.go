@@ -298,6 +298,7 @@ func parsePage(body interface{ Read([]byte) (int, error) }, threadURL string) (*
 
 	// Extract posts
 	var posts []*notifier.Post
+	//nolint:revive // goquery callback requires index parameter
 	doc.Find("li.message").Each(func(i int, s *goquery.Selection) {
 		// Extract post ID from id attribute
 		postIDAttr, exists := s.Attr("id")
