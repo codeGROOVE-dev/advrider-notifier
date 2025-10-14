@@ -3,9 +3,9 @@ package poll
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
+	"sync"
 	"time"
 
 	"advrider-notifier/pkg/notifier"
@@ -36,6 +36,7 @@ type Monitor struct {
 	emailer     Emailer
 	logger      *slog.Logger
 	cycleNumber int
+	pollMutex   sync.Mutex // Prevents concurrent polling
 }
 
 // New creates a new poll monitor.
@@ -49,7 +50,15 @@ func New(scraper Scraper, store Store, emailer Emailer, logger *slog.Logger) *Mo
 }
 
 // CheckAll checks all subscriptions for new posts.
+// This function is protected by a mutex to prevent concurrent polling.
 func (m *Monitor) CheckAll(ctx context.Context) error {
+	// Try to acquire the lock - if already polling, skip this cycle
+	if !m.pollMutex.TryLock() {
+		m.logger.Warn("Poll cycle already in progress - skipping this invocation")
+		return nil
+	}
+	defer m.pollMutex.Unlock()
+
 	m.cycleNumber++
 	cycleStart := time.Now()
 
@@ -284,6 +293,13 @@ func (m *Monitor) checkThreadForSubscribers(ctx context.Context, info *threadChe
 		// First check for this subscriber - just record the latest post ID
 		if thread.LastPostID == "" {
 			thread.LastPostID = latestPost.ID
+
+			m.logger.Info("Saving initial state for subscriber",
+				"cycle", m.cycleNumber,
+				"email", email,
+				"thread_url", threadURL,
+				"post_id", latestPost.ID)
+
 			if err := m.store.Save(ctx, sub); err != nil {
 				m.logger.Error("Failed to save initial state for subscriber",
 					"cycle", m.cycleNumber,
@@ -373,6 +389,12 @@ func (m *Monitor) checkThreadForSubscribers(ctx context.Context, info *threadChe
 			// Update last post ID after successful notification
 			thread.LastPostID = latestPost.ID
 
+			m.logger.Info("Saving state after successful notification",
+				"cycle", m.cycleNumber,
+				"email", email,
+				"thread_url", threadURL,
+				"new_last_post_id", latestPost.ID)
+
 			// CRITICAL: Save immediately to prevent duplicate notifications if server crashes
 			if err := m.store.Save(ctx, sub); err != nil {
 				m.logger.Error("CRITICAL: Notification sent but failed to save state - subscriber may get duplicate notification next cycle",
@@ -395,8 +417,14 @@ func (m *Monitor) checkThreadForSubscribers(ctx context.Context, info *threadChe
 			hasUpdates = true
 		} else {
 			// No new posts for this subscriber - just save state to update LastPolledAt
+			m.logger.Info("No new posts - saving state",
+				"cycle", m.cycleNumber,
+				"email", email,
+				"thread_url", threadURL,
+				"thread_title", thread.ThreadTitle)
+
 			if err := m.store.Save(ctx, sub); err != nil {
-				m.logger.Warn("Failed to save state (no new posts)",
+				m.logger.Error("Failed to save state (no new posts)",
 					"cycle", m.cycleNumber,
 					"email", email,
 					"thread_url", threadURL,
@@ -404,138 +432,16 @@ func (m *Monitor) checkThreadForSubscribers(ctx context.Context, info *threadChe
 					"error", err)
 			} else {
 				savedEmails[email] = true
+				m.logger.Info("State saved successfully (no new posts)",
+					"cycle", m.cycleNumber,
+					"email", email,
+					"thread_url", threadURL,
+					"thread_title", thread.ThreadTitle)
 			}
 		}
 	}
 
 	return hasUpdates, savedEmails, nil
-}
-
-// getFirstKey returns the first key from a map (for logging purposes).
-func getFirstKey(m map[string][]*notifier.Post) string {
-	for k := range m {
-		return k
-	}
-	return ""
-}
-
-func (m *Monitor) checkThread(ctx context.Context, sub *notifier.Subscription, threadID string, thread *notifier.Thread, cache map[string][]*notifier.Post, now time.Time) error {
-	m.logger.Info("Starting thread check",
-		"email", sub.Email,
-		"thread_id", threadID,
-		"thread_url", thread.ThreadURL,
-		"last_post_id", thread.LastPostID)
-
-	// Check cache first to avoid redundant fetches
-	posts, ok := cache[thread.ThreadURL]
-	if !ok {
-		// Use smart fetch to get posts efficiently
-		var title string
-		var err error
-		posts, title, err = m.scraper.SmartFetch(ctx, thread.ThreadURL, thread.LastPostID)
-		if err != nil {
-			return fmt.Errorf("fetch thread page: %w", err)
-		}
-		cache[thread.ThreadURL] = posts
-
-		// Update thread title if not set
-		if thread.ThreadTitle == "" {
-			thread.ThreadTitle = title
-			m.logger.Info("Thread title captured", "title", title)
-		}
-	}
-
-	// Update last polled time
-	thread.LastPolledAt = now
-
-	if len(posts) == 0 {
-		return errors.New("no posts found in thread")
-	}
-
-	latestPost := posts[len(posts)-1]
-
-	// Parse the timestamp of the latest post
-	if latestPost.Timestamp != "" {
-		if postTime, err := time.Parse(time.RFC3339, latestPost.Timestamp); err == nil {
-			thread.LastPostTime = postTime
-		}
-	}
-
-	m.logger.Info("Posts fetched for comparison",
-		"total_posts", len(posts),
-		"first_post_id", posts[0].ID,
-		"latest_post_id", latestPost.ID,
-		"last_seen_post_id", thread.LastPostID,
-		"last_post_time", thread.LastPostTime.Format(time.RFC3339))
-
-	if thread.LastPostID == "" {
-		// First check - just record the latest post ID and times
-		thread.LastPostID = latestPost.ID
-		if err := m.store.Save(ctx, sub); err != nil {
-			return fmt.Errorf("save subscription: %w", err)
-		}
-		m.logger.Info("Initial post ID recorded", "email", sub.Email, "thread_id", threadID, "post_id", latestPost.ID, "title", thread.ThreadTitle)
-		return nil
-	}
-
-	// Find all new posts since LastPostID
-	var newPosts []*notifier.Post
-	foundLast := false
-	for i, post := range posts {
-		if foundLast {
-			newPosts = append(newPosts, post)
-			m.logger.Debug("Found new post", "index", i, "post_id", post.ID, "author", post.Author)
-		}
-		if post.ID == thread.LastPostID {
-			foundLast = true
-			m.logger.Info("Found last seen post", "index", i, "post_id", post.ID)
-		}
-	}
-
-	if !foundLast && thread.LastPostID != "" {
-		m.logger.Warn("Last seen post ID not found in fetched posts - possible gap or old post",
-			"last_seen_post_id", thread.LastPostID,
-			"posts_fetched", len(posts),
-			"first_fetched_id", posts[0].ID,
-			"last_fetched_id", latestPost.ID)
-		// Treat all fetched posts as new (safer than missing posts)
-		newPosts = posts
-	}
-
-	if len(newPosts) > 0 {
-		// Apply safety limit - only send the most recent maxPostsPerEmail posts
-		if len(newPosts) > maxPostsPerEmail {
-			m.logger.Warn("Too many new posts, limiting to most recent",
-				"email", sub.Email,
-				"thread_id", threadID,
-				"total_new", len(newPosts),
-				"sending", maxPostsPerEmail)
-			newPosts = newPosts[len(newPosts)-maxPostsPerEmail:]
-		}
-
-		m.logger.Info("New posts detected",
-			"email", sub.Email,
-			"thread_id", threadID,
-			"count", len(newPosts),
-			"latest_post_id", latestPost.ID,
-			"previous", thread.LastPostID)
-
-		if err := m.emailer.SendNotification(ctx, sub, thread, newPosts); err != nil {
-			return fmt.Errorf("send email: %w", err)
-		}
-
-		thread.LastPostID = latestPost.ID
-		if err := m.store.Save(ctx, sub); err != nil {
-			return fmt.Errorf("save subscription: %w", err)
-		}
-	} else {
-		// No new posts, but still save to update LastPolledAt and LastPostTime
-		if err := m.store.Save(ctx, sub); err != nil {
-			return fmt.Errorf("save subscription: %w", err)
-		}
-	}
-
-	return nil
 }
 
 // calculateInterval determines how often to poll a thread based on activity.
