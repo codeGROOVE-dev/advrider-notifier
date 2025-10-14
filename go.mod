@@ -5,6 +5,7 @@ go 1.25.2
 require (
 	cloud.google.com/go/storage v1.48.0
 	github.com/PuerkitoBio/goquery v1.10.3
+	github.com/codeGROOVE-dev/gsm v0.0.0-20251007153111-74e7bbe21f47
 	github.com/codeGROOVE-dev/retry v1.2.0
 	google.golang.org/api v0.214.0
 )
@@ -24,7 +25,6 @@ require (
 	github.com/census-instrumentation/opencensus-proto v0.4.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cncf/xds/go v0.0.0-20240905190251-b4127c9b8d78 // indirect
-	github.com/codeGROOVE-dev/gsm v0.0.0-20251007153111-74e7bbe21f47 // indirect
 	github.com/envoyproxy/go-control-plane v0.13.0 // indirect
 	github.com/envoyproxy/protoc-gen-validate v1.1.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect

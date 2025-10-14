@@ -4,77 +4,99 @@
   <img src="media/logo.png" alt="ADVRider Notifier Logo" width="200">
 </p>
 
-A secure, minimal Go service that notifies subscribers about new ADVRider forum posts via email. Designed for Google Cloud Run.
+Email notifications for ADVRider threads. Built for Cloud Run, written in Go.
 
-## Features
+ADVRider's built-in notifications only email you once after your last visit to that thread. This keeps the party going by emailing every new post until you unsubscribe.
 
-- **Multi-subscription support** - Users can subscribe to multiple threads with one email
-- **Secure token-based authentication** - 64-char random tokens prevent enumeration attacks
-- **Efficient thread fetching** - Each thread is fetched only once per check cycle, regardless of subscriber count
-- **Smart URL normalization** - Handles page numbers and anchors automatically
-- **Rate limiting** - 5 subscriptions per IP per hour
-- **Thread verification** - Validates threads exist before creating subscriptions
-- **Constant-time token comparison** - Prevents timing attacks
-- **Comprehensive security headers** - CSP, X-Frame-Options, X-Content-Type-Options
-- **Retry logic** - Exponential backoff with jitter for HTTP and Gmail API calls
-- **Structured logging** - JSON logs for Cloud Run with slog
-- **Graceful degradation** - Continues monitoring despite individual failures
-- **HTML email formatting** - Clean, responsive email templates
+## What it does
 
-## Prerequisites
+Subscribe to ADVRider forum threads and get emails when new posts appear. That's it.
 
-- Go 1.23 or later
-- Google Cloud Project with:
-  - Cloud Run API enabled
-  - Cloud Storage API enabled
-  - Gmail API enabled
-- Service account with:
-  - Gmail API access (https://www.googleapis.com/auth/gmail.send)
-  - Cloud Storage access (Storage Object Admin role)
-- [ko](https://ko.build/) for deployment
+- Adaptive polling (5min to 4hr based on thread activity)
+- Multiple threads per email address
+- Handles login-required forums gracefully (reports 403, doesn't crash)
+- Exponential backoff with retry on transient failures
+- Local dev mode with mocked email
+
+## Running it
+
+**Local (filesystem + mock email):**
+```bash
+go run .
+```
+
+Visit http://localhost:8080 and subscribe to a thread.
+
+**Cloud Run (GCS + Brevo):**
+```bash
+export STORAGE_BUCKET=your-bucket-name
+export BASE_URL=https://your-service.run.app
+export BREVO_API_KEY=your-api-key
+ko apply -f service.yaml
+```
+
+Requires a service account with Cloud Storage access and a Brevo API key.
+
+## Architecture
+
+```
+/                    Homepage (subscribe form)
+/subscribe           POST: Create subscription (verifies thread exists first)
+/manage?token=...    View/delete subscriptions
+/pollz               POST: Trigger immediate poll (no auth, rate limited by IP)
+```
+
+Storage is either local filesystem (`./data`) or GCS (`STORAGE_BUCKET`).
+
+Email via Brevo API. Falls back to mock in dev.
+
+Each thread is scraped once per poll cycle regardless of subscriber count. Polling interval calculated per-thread using exponential backoff: `5min × 2^(hours_since_post / 3)`, capped at 4 hours.
+
+## Security
+
+- Rate limiting: 5 subscriptions/hour per IP
+- Token-based subscription management (64-char random, constant-time comparison)
+- Thread limit: 20 per user (prevents resource exhaustion)
+- Email limit: 10 posts per notification (prevents abuse)
+- CSP, X-Frame-Options, X-Content-Type-Options headers
+- Thread verification before subscription (validates URL is actually an ADVRider thread)
 
 ## Environment Variables
 
-| Variable | Description | Example |
-|----------|-------------|---------|
-| `STORAGE_BUCKET` | Cloud Storage bucket name for subscription data | `advrider-subscriptions` |
-| `BASE_URL` | Public URL of the deployed service | `https://advrider-notifier-xyz.run.app` |
-| `GOOGLE_CREDENTIALS_JSON` | Service account credentials JSON (optional, uses ADC if not set) | `{"type":"service_account",...}` |
-| `PORT` | HTTP server port (optional, defaults to 8080) | `8080` |
-| `LOCAL_STORAGE` | Local filesystem path for subscription data (optional, defaults to ./data) | `/var/tmp/advrider-notify` |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `STORAGE_BUCKET` | Cloud only | GCS bucket for subscription data |
+| `BASE_URL` | Cloud only | Public URL (for manage links in emails) |
+| `BREVO_API_KEY` | Cloud only | Brevo API key for sending emails |
+| `SALT` | Required | Secret salt for token generation (set in GSM or env) |
+| `PORT` | Optional | HTTP port (default: 8080) |
+| `LOCAL_STORAGE` | Optional | Local storage path (default: ./data) |
+| `MAIL_FROM` | Optional | From email address (defaults to postmaster@domain) |
+| `MAIL_NAME` | Optional | From name (default: ADVRider Notifier) |
 
-## Local Development
-
-### Build
-
-```bash
-make build
-```
-
-### Run Tests
+## Development
 
 ```bash
-make test
+make build      # Build binary
+make test       # Run tests
+make lint       # golangci-lint
+make deploy     # Deploy to Cloud Run via ko
 ```
 
-### Run Locally
+Tests use real ADVRider HTML parsing (no mocks for scraper). Exponential backoff algorithm is tested for correctness across all activity levels.
 
-The service automatically runs in local development mode with mock email when no `STORAGE_BUCKET` is set:
+## Email Templates
 
-```bash
-# Simplest - just run it (uses ./data for storage, mocks email)
-go run .
+Dark mode support via `prefers-color-scheme`. WCAG AA compliant. Post numbers are clickable anchors to specific posts on specific pages.
 
-# Trigger a poll manually (POST only)
-curl -X POST http://localhost:8080/pollz
-```
+Footer links: "View thread" (goes to last page + last post anchor) and "Manage" (token-authenticated subscription management).
 
-## Deployment
+## Why Go?
 
-The service uses [ko](https://ko.build/) for containerless deployment to Cloud Run.
+Fast cold starts on Cloud Run, trivial deploys with ko, stdlib has everything we need. No npm, no containers, no Dockerfile.
 
-### Deploy
+## License
 
-```bash
-make deploy
-```
+Apache 2.0 - see LICENSE file
+
+Built by [codeGROOVE llc](https://codegroove.dev)

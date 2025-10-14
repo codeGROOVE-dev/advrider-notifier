@@ -21,8 +21,6 @@ import (
 
 	gcs "cloud.google.com/go/storage"
 	"github.com/codeGROOVE-dev/gsm"
-	"google.golang.org/api/gmail/v1"
-	"google.golang.org/api/option"
 )
 
 //go:embed media/*
@@ -248,68 +246,14 @@ func initEmailProvider(ctx context.Context, providerName string, logger *slog.Lo
 		logger.Info("Initializing Brevo email provider", "from", fromAddr, "name", fromName)
 		provider = email.NewBrevoProvider(apiKey, fromAddr, fromName, logger)
 
-	case "gmail":
-		gmailService, err := initGmailService(ctx, logger)
-		if err != nil {
-			return nil, fmt.Errorf("initialize Gmail service: %w", err)
-		}
-		logger.Info("Initializing Gmail email provider", "from", fromAddr)
-		provider = email.NewGmailProvider(gmailService, logger)
-
 	case "mock":
 		logger.Info("Initializing mock email provider (no emails will be sent)", "from", fromAddr)
 		provider = email.NewMockProvider(logger)
 
 	default:
-		return nil, fmt.Errorf("unknown email provider: %s (valid options: brevo, gmail, mock)", providerName)
+		return nil, fmt.Errorf("unknown email provider: %s (valid options: brevo, mock)", providerName)
 	}
 
 	return email.New(provider, logger, baseURL, fromAddr), nil
 }
 
-// isCloudRun checks if we're running in a GCP environment by querying the metadata server.
-func isCloudRun(ctx context.Context) bool {
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://metadata.google.internal/computeMetadata/v1/project/project-id", nil)
-	if err != nil {
-		return false
-	}
-	req.Header.Set("Metadata-Flavor", "Google")
-
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return false
-	}
-	defer func() {
-		if err := resp.Body.Close(); err != nil {
-			// Silently ignore close errors for metadata check
-		}
-	}()
-
-	return resp.StatusCode == http.StatusOK
-}
-
-func initGmailService(ctx context.Context, logger *slog.Logger) (*gmail.Service, error) {
-	// Use gmail.GmailSendScope for send-only access (principle of least privilege)
-	// This is more secure than using full Gmail access
-	scope := option.WithScopes(gmail.GmailSendScope)
-
-	// Try explicit credentials first (for local development or specific use cases)
-	credsJSON := secret(ctx, "GOOGLE_CREDENTIALS_JSON", logger)
-	if credsJSON != "" {
-		return gmail.NewService(ctx, option.WithCredentialsJSON([]byte(credsJSON)), scope)
-	}
-
-	// If running in Cloud Run, use Application Default Credentials (ADC)
-	// This automatically uses the service account
-	// The service account needs Gmail API access (gmail.send scope)
-	if isCloudRun(ctx) {
-		return gmail.NewService(ctx, scope)
-	}
-
-	// Not in Cloud Run and no explicit credentials
-	return nil, errors.New("GOOGLE_CREDENTIALS_JSON required when not running in Cloud Run (set in environment or GSM)")
-}
