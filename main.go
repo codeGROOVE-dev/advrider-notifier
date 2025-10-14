@@ -5,8 +5,6 @@ package main
 import (
 	"context"
 	"embed"
-	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -39,18 +37,12 @@ func main() {
 	localStorage := os.Getenv("LOCAL_STORAGE")
 	bucket := os.Getenv("STORAGE_BUCKET")
 	baseURL := os.Getenv("BASE_URL")
-	emailProvider := strings.ToLower(os.Getenv("EMAIL_PROVIDER"))
 
 	// Load SALT from GSM or environment variable
 	salt := secret(ctx, "SALT", logger)
 	if salt == "" {
 		logger.Error("SALT is not set in environment or GSM - subscription unsubscribe URLs will be guessable, allowing anyone to unsubscribe any email address. This is a CRITICAL SECURITY ISSUE.")
 		os.Exit(1)
-	}
-
-	// Default to brevo provider if not specified
-	if emailProvider == "" {
-		emailProvider = "brevo"
 	}
 
 	// Default to local development mode if no bucket specified
@@ -61,7 +53,7 @@ func main() {
 
 	// Local development mode
 	if localStorage != "" {
-		logger.Info("Running in local development mode", "storage_path", localStorage, "email_provider", emailProvider)
+		logger.Info("Running in local development mode", "storage_path", localStorage)
 		if baseURL == "" {
 			baseURL = "http://localhost:8080"
 		}
@@ -72,11 +64,24 @@ func main() {
 			os.Exit(1)
 		}
 
-		// Initialize email provider
-		emailSender, err := initEmailProvider(ctx, emailProvider, logger, baseURL)
-		if err != nil {
-			logger.Error("Failed to initialize email provider", "provider", emailProvider, "error", err)
-			os.Exit(1)
+		// Initialize email: auto-detect Brevo vs Mock
+		var emailSender *email.Sender
+		if apiKey := secret(ctx, "BREVO_API_KEY", logger); apiKey != "" {
+			fromAddr := os.Getenv("MAIL_FROM")
+			fromName := os.Getenv("MAIL_NAME")
+			if fromName == "" {
+				fromName = "ADVRider Notifier"
+			}
+			if fromAddr == "" {
+				fromAddr = "postmaster@" + domainFromURL(baseURL)
+			}
+			logger.Info("Using Brevo email provider", "from", fromAddr, "name", fromName)
+			provider := email.NewBrevoProvider(apiKey, fromAddr, fromName, logger)
+			emailSender = email.New(provider, logger, baseURL)
+		} else {
+			logger.Info("Using mock email provider (no emails will be sent)")
+			provider := email.NewMockProvider(logger)
+			emailSender = email.New(provider, logger, baseURL)
 		}
 
 		// Initialize components
@@ -128,14 +133,31 @@ func main() {
 		os.Exit(1)
 	}
 
-	logger.Info("Running in production mode", "bucket", bucket, "email_provider", emailProvider)
+	logger.Info("Running in production mode", "bucket", bucket)
 
-	// Initialize email provider
-	emailSender, err := initEmailProvider(ctx, emailProvider, logger, baseURL)
-	if err != nil {
-		logger.Error("Failed to initialize email provider", "provider", emailProvider, "error", err)
+	// Initialize email: Brevo required in production
+	apiKey := secret(ctx, "BREVO_API_KEY", logger)
+	if apiKey == "" {
+		logger.Error("BREVO_API_KEY required for production (set in environment or GSM)")
 		os.Exit(1)
 	}
+	fromAddr := os.Getenv("MAIL_FROM")
+	fromName := os.Getenv("MAIL_NAME")
+	if fromName == "" {
+		fromName = "ADVRider Notifier"
+	}
+	if fromAddr == "" {
+		if domain := domainFromURL(baseURL); domain != "" {
+			fromAddr = "postmaster@" + domain
+		}
+	}
+	if fromAddr == "" {
+		logger.Error("MAIL_FROM could not be determined (set BASE_URL or MAIL_FROM)")
+		os.Exit(1)
+	}
+	logger.Info("Using Brevo email provider", "from", fromAddr, "name", fromName)
+	provider := email.NewBrevoProvider(apiKey, fromAddr, fromName, logger)
+	emailSender := email.New(provider, logger, baseURL)
 
 	// Initialize Storage client
 	storageClient, err := gcs.NewClient(ctx)
@@ -208,52 +230,15 @@ func secret(ctx context.Context, name string, logger *slog.Logger) string {
 	return val
 }
 
-// initEmailProvider initializes the appropriate email provider based on configuration.
-func initEmailProvider(ctx context.Context, providerName string, logger *slog.Logger, baseURL string) (*email.Sender, error) {
-	var provider email.Provider
-	fromAddr := os.Getenv("MAIL_FROM")
-	fromName := os.Getenv("MAIL_NAME")
-
-	// Default from address to postmaster@<domain> based on BASE_URL
-	if fromAddr == "" {
-		// Extract domain from URL
-		domain := strings.TrimPrefix(baseURL, "https://")
-		domain = strings.TrimPrefix(domain, "http://")
-		if idx := strings.Index(domain, "/"); idx != -1 {
-			domain = domain[:idx]
-		}
-		if idx := strings.Index(domain, ":"); idx != -1 {
-			domain = domain[:idx]
-		}
-		if domain != "" {
-			fromAddr = "postmaster@" + domain
-		}
+// domainFromURL extracts the domain from a URL for use in email addresses.
+func domainFromURL(baseURL string) string {
+	domain := strings.TrimPrefix(baseURL, "https://")
+	domain = strings.TrimPrefix(domain, "http://")
+	if idx := strings.Index(domain, "/"); idx != -1 {
+		domain = domain[:idx]
 	}
-
-	if fromName == "" {
-		fromName = "ADVRider Notifier"
+	if idx := strings.Index(domain, ":"); idx != -1 {
+		domain = domain[:idx]
 	}
-
-	switch providerName {
-	case "brevo":
-		apiKey := secret(ctx, "BREVO_API_KEY", logger)
-		if apiKey == "" {
-			return nil, errors.New("BREVO_API_KEY required for Brevo provider (set in environment or GSM)")
-		}
-		if fromAddr == "" {
-			return nil, errors.New("MAIL_FROM could not be determined (set BASE_URL or MAIL_FROM)")
-		}
-		logger.Info("Initializing Brevo email provider", "from", fromAddr, "name", fromName)
-		provider = email.NewBrevoProvider(apiKey, fromAddr, fromName, logger)
-
-	case "mock":
-		logger.Info("Initializing mock email provider (no emails will be sent)", "from", fromAddr)
-		provider = email.NewMockProvider(logger)
-
-	default:
-		return nil, fmt.Errorf("unknown email provider: %s (valid options: brevo, mock)", providerName)
-	}
-
-	return email.New(provider, logger, baseURL, fromAddr), nil
+	return domain
 }
-

@@ -43,7 +43,7 @@ func TestFormatEmailBody(t *testing.T) {
 	}))
 
 	mockProvider := email.NewMockProvider(logger)
-	sender := email.New(mockProvider, logger, "https://test.example.com", "test@example.com")
+	sender := email.New(mockProvider, logger, "https://test.example.com")
 
 	sub := &notifier.Subscription{
 		Email: "test@example.com",

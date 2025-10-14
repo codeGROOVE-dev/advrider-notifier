@@ -48,7 +48,7 @@ Requires a service account with Cloud Storage access and a Brevo API key.
 
 Storage is either local filesystem (`./data`) or GCS (`STORAGE_BUCKET`).
 
-Email via Brevo API. Falls back to mock in dev.
+Email via Brevo API. Auto-detects mock mode when `BREVO_API_KEY` is not set.
 
 Each thread is scraped once per poll cycle regardless of subscriber count. Polling interval calculated per-thread using exponential backoff: `5min × 2^(hours_since_post / 3)`, capped at 4 hours.
 

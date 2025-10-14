@@ -1,4 +1,4 @@
-// Package email handles sending notification emails via multiple providers.
+// Package email handles sending notification emails via Brevo or mock.
 package email
 
 import (
@@ -10,25 +10,22 @@ import (
 
 // Provider defines the interface for email sending implementations.
 type Provider interface {
-	// Send sends an email with the given parameters.
 	Send(ctx context.Context, to, subject, htmlBody string) error
 }
 
-// Sender sends notification emails using a pluggable provider.
+// Sender sends notification emails.
 type Sender struct {
 	provider Provider
 	logger   *slog.Logger
 	baseURL  string // For links in emails
-	fromAddr string // From address for emails
 }
 
-// New creates a new email sender with the given provider.
-func New(provider Provider, logger *slog.Logger, baseURL, fromAddr string) *Sender {
+// New creates a new email sender.
+func New(provider Provider, logger *slog.Logger, baseURL string) *Sender {
 	return &Sender{
 		provider: provider,
 		logger:   logger,
 		baseURL:  baseURL,
-		fromAddr: fromAddr,
 	}
 }
 

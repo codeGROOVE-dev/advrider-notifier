@@ -172,7 +172,16 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.logger.Info("Poll endpoint triggered")
+	// SECURITY: Rate limit poll endpoint to prevent DoS attacks
+	// Even though CheckAll has a mutex, we want to prevent log spam and CPU waste
+	ip := clientIP(r)
+	if !globalRateLimiter.allow(ip) {
+		s.logger.Warn("Rate limit exceeded on poll endpoint", "ip", ip)
+		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
+		return
+	}
+
+	s.logger.Info("Poll endpoint triggered", "ip", ip)
 
 	if err := s.poller.CheckAll(r.Context()); err != nil {
 		s.logger.Error("Poll check failed", "error", err)
@@ -242,11 +251,23 @@ var globalRateLimiter = &rateLimiter{
 }
 
 func clientIP(r *http.Request) string {
-	// Security: X-Forwarded-For can be spoofed by clients, so we don't trust it.
-	// In Cloud Run, the load balancer sets this, but attackers can still manipulate it.
-	// Use RemoteAddr which is the actual TCP connection source.
-	// Note: This means all traffic from Cloud Run's load balancer will appear as the same IP
-	// in local dev, but in production Cloud Run will have consistent IPs per connection.
+	// In Cloud Run, Google's load balancer sets X-Forwarded-For with the client's real IP.
+	// The load balancer strips any existing X-Forwarded-For headers from the client,
+	// so this header is trusted in Cloud Run environments.
+	// This is documented at: https://cloud.google.com/run/docs/reference/request-headers
+	//
+	// For defense-in-depth, we take the FIRST IP in X-Forwarded-For (client IP),
+	// not the last one, to prevent X-Forwarded-For injection attacks in misconfigured proxies.
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// X-Forwarded-For format: "client, proxy1, proxy2"
+		// We want the first (leftmost) IP which is the original client
+		if idx := strings.Index(xff, ","); idx != -1 {
+			return strings.TrimSpace(xff[:idx])
+		}
+		return strings.TrimSpace(xff)
+	}
+
+	// Fallback to RemoteAddr for local development without a proxy
 	ip := r.RemoteAddr
 	if idx := strings.LastIndex(ip, ":"); idx != -1 {
 		ip = ip[:idx]
