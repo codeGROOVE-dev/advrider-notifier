@@ -29,7 +29,7 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	b.WriteString(".content img { max-width: 100%; height: auto; margin: 10px 0; display: block; }\n")
 	b.WriteString(".content blockquote { border-left: 3px solid #ddd; padding-left: 15px; margin: 10px 0; color: #666; font-size: 0.95em; }\n")
 	b.WriteString(".content hr { border: none; border-top: 1px solid #ddd; margin: 15px 0; }\n")
-	b.WriteString(".footer { margin-top: 24px; padding-top: 12px; font-size: 0.9em; color: #7f8c8d; }\n")
+	b.WriteString(".footer { margin-top: 16px; padding-top: 8px; font-size: 0.9em; color: #7f8c8d; }\n")
 	b.WriteString(".footer.with-border { border-top: 1px solid #ddd; }\n")
 	b.WriteString(".footer a { color: #7f8c8d; text-decoration: underline; margin: 0 8px; }\n")
 	b.WriteString(".footer a:first-child { margin-left: 0; }\n")
@@ -80,13 +80,9 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	}
 
 	// Footer with thread link and manage link
-	// Only add border if there are multiple posts (orange lines provide separation)
-	footerClass := "footer"
-	if len(posts) > 1 {
-		footerClass = "footer with-border"
-	}
+	// Always add grey border to separate footer from content
 	//nolint:gocritic // %q would add extra quotes in HTML context
-	b.WriteString(fmt.Sprintf("<div class=\"%s\">\n", footerClass))
+	b.WriteString("<div class=\"footer with-border\">\n")
 
 	// Link to the last page with anchor to latest post (e.g., .../page-12#post-12345)
 	// This loads the full page context but scrolls to the most recent post
