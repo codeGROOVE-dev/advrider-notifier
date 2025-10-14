@@ -347,13 +347,20 @@ func parsePage(body interface{ Read([]byte) (int, error) }, threadURL string) (*
 			htmlContent = content // Fallback to plain text
 		}
 
+		// Build proper URL with page number (threadURL here is actually the pageURL from fetchSinglePage)
+		// Format: https://advrider.com/f/threads/example.123/page-12#post-456
+		postURL := threadURL
+		// Ensure URL doesn't have trailing slash before adding anchor
+		postURL = strings.TrimSuffix(postURL, "/")
+		postURL = postURL + "#post-" + id
+
 		posts = append(posts, &notifier.Post{
 			ID:          id,
 			Author:      author,
 			Content:     content,
 			HTMLContent: htmlContent,
 			Timestamp:   timestamp,
-			URL:         threadURL + "#post-" + id,
+			URL:         postURL,
 		})
 	})
 

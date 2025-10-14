@@ -16,7 +16,7 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	b.WriteString("<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	b.WriteString("<style>\n")
-	b.WriteString("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }\n")
+	b.WriteString("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; background: #fff; }\n")
 	b.WriteString(".post { margin-bottom: 30px; padding-bottom: 30px; border-bottom: 2px solid #e67e22; }\n")
 	b.WriteString(".post:last-of-type { border-bottom: none; padding-bottom: 0; }\n")
 	b.WriteString(".post:first-of-type { padding-top: 0; }\n")
@@ -33,6 +33,17 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	b.WriteString(".footer a:first-child { margin-left: 0; }\n")
 	b.WriteString("a { color: #e67e22; text-decoration: none; }\n")
 	b.WriteString("a:hover { text-decoration: underline; }\n")
+	b.WriteString("@media (prefers-color-scheme: dark) {\n")
+	b.WriteString("body { background: #1a1a1a; color: #e0e0e0; }\n")
+	b.WriteString(".post-number { color: #a0a0a0; }\n")
+	b.WriteString(".author { color: #ff8c42; }\n")
+	b.WriteString(".timestamp { color: #a0a0a0; }\n")
+	b.WriteString(".content blockquote { border-left-color: #444; color: #b0b0b0; }\n")
+	b.WriteString(".content img { opacity: 0.9; }\n")
+	b.WriteString(".footer { border-top-color: #444; color: #a0a0a0; }\n")
+	b.WriteString(".footer a { color: #a0a0a0; }\n")
+	b.WriteString("a { color: #ff8c42; }\n")
+	b.WriteString("}\n")
 	b.WriteString("</style>\n</head>\n<body>\n")
 
 	// Render each post - no redundant header
@@ -63,7 +74,15 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 
 	// Footer with thread link and manage link
 	b.WriteString("<div class=\"footer\">\n")
-	b.WriteString(fmt.Sprintf("<a href=\"%s\">View thread</a>\n", escapeHTML(thread.ThreadURL)))
+
+	// Link to the last page with anchor to latest post (e.g., .../page-12#post-12345)
+	// This loads the full page context but scrolls to the most recent post
+	threadLink := thread.ThreadURL
+	if len(posts) > 0 && posts[len(posts)-1].URL != "" {
+		threadLink = posts[len(posts)-1].URL
+	}
+	b.WriteString(fmt.Sprintf("<a href=\"%s\">View thread</a>\n", escapeHTML(threadLink)))
+
 	manageURL := fmt.Sprintf("%s/manage?token=%s", s.baseURL, url.QueryEscape(sub.Token))
 	b.WriteString(fmt.Sprintf("<a href=\"%s\">Manage</a>\n", escapeHTML(manageURL)))
 	b.WriteString("</div>\n")
@@ -77,16 +96,25 @@ func (s *Sender) formatWelcomeBody(sub *notifier.Subscription, thread *notifier.
 	manageURL := fmt.Sprintf("%s/manage?token=%s", s.baseURL, url.QueryEscape(sub.Token))
 
 	var b strings.Builder
-	b.WriteString("<!DOCTYPE html>\n<html>\n<head>\n")
+	b.WriteString("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n")
 	b.WriteString("<meta charset=\"utf-8\">\n")
+	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	b.WriteString("<style>\n")
-	b.WriteString("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; }\n")
+	b.WriteString("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; background: #fff; }\n")
 	b.WriteString(".header { border-bottom: 2px solid #e67e22; padding-bottom: 10px; margin-bottom: 20px; }\n")
 	b.WriteString(".content { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 15px 0; }\n")
 	b.WriteString(".info { color: #7f8c8d; font-size: 0.9em; margin: 15px 0; }\n")
 	b.WriteString(".footer { margin-top: 20px; padding-top: 10px; border-top: 2px solid #ecf0f1; color: #7f8c8d; font-size: 0.9em; }\n")
 	b.WriteString("a { color: #e67e22; text-decoration: none; }\n")
 	b.WriteString("a:hover { text-decoration: underline; }\n")
+	b.WriteString("@media (prefers-color-scheme: dark) {\n")
+	b.WriteString("body { background: #1a1a1a; color: #e0e0e0; }\n")
+	b.WriteString(".header { border-bottom-color: #ff8c42; }\n")
+	b.WriteString(".content { background: #2a2a2a; }\n")
+	b.WriteString(".info { color: #a0a0a0; }\n")
+	b.WriteString(".footer { border-top-color: #444; color: #a0a0a0; }\n")
+	b.WriteString("a { color: #ff8c42; }\n")
+	b.WriteString("}\n")
 	b.WriteString("</style>\n</head>\n<body>\n")
 
 	b.WriteString("<div class=\"header\">\n")
