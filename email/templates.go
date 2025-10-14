@@ -51,8 +51,23 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	b.WriteString("</style>\n</head>\n<body>\n")
 
 	// Render each post - no redundant header
-	for _, post := range posts {
-		b.WriteString("<div class=\"post\">\n")
+	for i, post := range posts {
+		// Use inline styles for first/last posts to ensure Gmail compatibility (it doesn't support :first-of-type/:last-of-type)
+		isFirst := i == 0
+		isLast := i == len(posts)-1
+
+		if isFirst && isLast {
+			// Single post: no top padding, no bottom border
+			b.WriteString("<div class=\"post\" style=\"padding-top: 0; border-bottom: none; padding-bottom: 0;\">\n")
+		} else if isFirst {
+			// First of multiple: no top padding
+			b.WriteString("<div class=\"post\" style=\"padding-top: 0;\">\n")
+		} else if isLast {
+			// Last of multiple: no bottom border
+			b.WriteString("<div class=\"post\" style=\"border-bottom: none; padding-bottom: 0;\">\n")
+		} else {
+			b.WriteString("<div class=\"post\">\n")
+		}
 		b.WriteString("<div class=\"meta\">\n")
 		//nolint:gocritic // %q would add extra quotes in HTML context
 		b.WriteString(fmt.Sprintf("<a href=\"%s\" class=\"post-number\">#%s</a>\n", escapeHTML(post.URL), escapeHTML(post.ID)))
