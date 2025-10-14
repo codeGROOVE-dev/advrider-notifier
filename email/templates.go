@@ -135,9 +135,9 @@ func (s *Sender) formatWelcomeBody(sub *notifier.Subscription, thread *notifier.
 	b.WriteString("</div>\n")
 
 	b.WriteString("<div class=\"footer\">\n")
-	b.WriteString(fmt.Sprintf("<a href=\"%s\">View thread on ADVRider</a>\n", escapeHTML(thread.ThreadURL)))
+	b.WriteString(fmt.Sprintf("<a href=\"%s\">View thread</a>\n", escapeHTML(thread.ThreadURL)))
 	b.WriteString(" &bull; \n")
-	b.WriteString(fmt.Sprintf("<a href=\"%s\">Manage Subscriptions</a>\n", escapeHTML(manageURL)))
+	b.WriteString(fmt.Sprintf("<a href=\"%s\">Manage</a>\n", escapeHTML(manageURL)))
 	b.WriteString("</div>\n")
 
 	b.WriteString("</body>\n</html>")
