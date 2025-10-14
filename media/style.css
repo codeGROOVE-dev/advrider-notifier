@@ -72,12 +72,21 @@ a {
 	transition: all 0.2s ease;
 	box-shadow: 0 4px 12px rgba(230, 126, 34, 0.3);
 	margin-top: 16px;
+	min-height: 44px;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
 }
 
 a:hover {
 	background: #d35400;
 	transform: translateY(-1px);
 	box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
+}
+
+a:focus {
+	outline: 3px solid #e67e22;
+	outline-offset: 2px;
 }
 
 label {
@@ -102,7 +111,8 @@ input[type="email"] {
 
 input[type="url"]:focus,
 input[type="email"]:focus {
-	outline: none;
+	outline: 3px solid #e67e22;
+	outline-offset: 2px;
 	border-color: #e67e22;
 	box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.1);
 }
@@ -119,12 +129,18 @@ button {
 	transition: all 0.2s ease;
 	box-shadow: 0 4px 12px rgba(230, 126, 34, 0.3);
 	font-family: inherit;
+	min-height: 44px;
 }
 
 button:hover {
 	background: #d35400;
 	transform: translateY(-1px);
 	box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
+}
+
+button:focus {
+	outline: 3px solid #e67e22;
+	outline-offset: 2px;
 }
 
 button.secondary {
@@ -135,6 +151,11 @@ button.secondary {
 button.secondary:hover {
 	background: #555;
 	box-shadow: 0 6px 20px rgba(102, 102, 102, 0.4);
+}
+
+button.secondary:focus {
+	outline: 3px solid #666;
+	outline-offset: 2px;
 }
 
 .url-box {
@@ -171,6 +192,32 @@ button.secondary:hover {
 	margin-bottom: 8px;
 }
 
+.thread-url a {
+	display: inline;
+	background: none;
+	color: #0066cc;
+	text-decoration: underline;
+	padding: 2px;
+	margin: 0;
+	box-shadow: none;
+	font-size: inherit;
+	font-weight: normal;
+	border-radius: 3px;
+}
+
+.thread-url a:hover {
+	color: #004499;
+	background: none;
+	transform: none;
+	box-shadow: none;
+}
+
+.thread-url a:focus {
+	outline: 2px solid #0066cc;
+	outline-offset: 2px;
+	background: rgba(0, 102, 204, 0.1);
+}
+
 .thread-meta {
 	font-size: 14px;
 	color: #999;
@@ -191,6 +238,35 @@ button.secondary:hover {
 	margin-top: 48px;
 	padding-top: 32px;
 	border-top: 1px solid #eee;
+}
+
+.empty {
+	text-align: center;
+	padding: 40px 20px;
+	color: #666;
+}
+
+.empty p {
+	margin-bottom: 24px;
+}
+
+.empty a {
+	display: inline-block;
+	background: #e67e22;
+	color: white;
+	padding: 14px 28px;
+	border-radius: 8px;
+	text-decoration: none;
+	font-size: 17px;
+	font-weight: 600;
+	box-shadow: 0 4px 12px rgba(230, 126, 34, 0.3);
+	margin-top: 8px;
+}
+
+.empty a:hover {
+	background: #d35400;
+	transform: translateY(-1px);
+	box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
 }
 
 .logo {
@@ -275,15 +351,32 @@ button:active {
 	border-top: 1px solid #eee;
 	text-align: center;
 	font-size: 14px;
-	color: #999;
+	color: #767676;
 }
 
 .footer a {
+	display: inline;
+	background: none;
 	color: #e67e22;
 	text-decoration: none;
+	padding: 2px 4px;
+	margin: 0 2px;
+	box-shadow: none;
+	font-size: inherit;
+	font-weight: normal;
+	border-radius: 3px;
 }
 
 .footer a:hover {
+	text-decoration: underline;
+	background: none;
+	transform: none;
+	box-shadow: none;
+}
+
+.footer a:focus {
+	outline: 2px solid #e67e22;
+	outline-offset: 2px;
 	text-decoration: underline;
 }
 

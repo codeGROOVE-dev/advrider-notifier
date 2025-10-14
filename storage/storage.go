@@ -78,7 +78,7 @@ func SubscriptionKey(token string) string {
 func (s *Store) Save(ctx context.Context, sub *notifier.Subscription) error {
 	key := SubscriptionKey(sub.Token)
 	if key == "" {
-		return fmt.Errorf("invalid token format")
+		return errors.New("invalid token format")
 	}
 	s.logger.Debug("Saving subscription", "key", key, "email", sub.Email)
 
@@ -90,7 +90,7 @@ func (s *Store) Save(ctx context.Context, sub *notifier.Subscription) error {
 	// Local filesystem storage
 	if s.localPath != "" {
 		filePath := filepath.Join(s.localPath, key)
-		if err := os.WriteFile(filePath, data, 0o644); err != nil {
+		if err := os.WriteFile(filePath, data, 0o600); err != nil {
 			return fmt.Errorf("write to local storage: %w", err)
 		}
 
@@ -124,7 +124,7 @@ func (s *Store) LoadByEmail(ctx context.Context, email string) (*notifier.Subscr
 // Load loads a subscription by key.
 func (s *Store) Load(ctx context.Context, key string) (*notifier.Subscription, error) {
 	if key == "" {
-		return nil, fmt.Errorf("invalid key format")
+		return nil, errors.New("invalid key format")
 	}
 
 	var data []byte
@@ -171,7 +171,7 @@ func (s *Store) Delete(ctx context.Context, email string) error {
 	token := s.TokenFromEmail(email)
 	key := SubscriptionKey(token)
 	if key == "" {
-		return fmt.Errorf("invalid token format")
+		return errors.New("invalid token format")
 	}
 	s.logger.Debug("Deleting subscription", "key", key, "email", email)
 

@@ -80,7 +80,7 @@ func (b *BrevoProvider) Send(ctx context.Context, to, subject, htmlBody string) 
 			}
 
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("api-key", b.apiKey)
+			req.Header.Set("Api-Key", b.apiKey)
 
 			resp, err := b.client.Do(req)
 			duration := time.Since(startTime)

@@ -87,20 +87,19 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	// Load or create subscription
 	sub, err := s.store.LoadByEmail(r.Context(), email)
 	if err != nil {
-		// Check if it's a "not found" error
-		if s.isNotFound(err) {
-			// Create new subscription with deterministic token from email
-			token := s.store.TokenFromEmail(email)
-
-			sub = &notifier.Subscription{
-				Email:   email,
-				Token:   token,
-				Threads: make(map[string]*notifier.Thread),
-			}
-		} else {
+		// If not a "not found" error, it's a real error
+		if !s.isNotFound(err) {
 			s.logger.Error("Failed to load subscription", "error", err)
 			http.Error(w, "Internal server error", http.StatusInternalServerError)
 			return
+		}
+
+		// Create new subscription with deterministic token from email
+		token := s.store.TokenFromEmail(email)
+		sub = &notifier.Subscription{
+			Email:   email,
+			Token:   token,
+			Threads: make(map[string]*notifier.Thread),
 		}
 	}
 

@@ -121,7 +121,7 @@ func (s *Scraper) smartFetch(ctx context.Context, threadURL string, lastSeenPost
 		needsPreviousPage = !found
 	}
 
-	allPosts := lastPage.Posts
+	var allPosts []*notifier.Post
 
 	if needsPreviousPage && firstPage.LastPage > 1 {
 		s.logger.Info("Last seen post not found on last page, fetching second-to-last page",
@@ -132,11 +132,15 @@ func (s *Scraper) smartFetch(ctx context.Context, threadURL string, lastSeenPost
 		secondToLastPage, err := s.fetchSinglePage(ctx, secondToLastURL)
 		if err != nil {
 			s.logger.Warn("Failed to fetch second-to-last page, continuing with last page only", "error", err)
+			allPosts = lastPage.Posts
 		} else {
 			s.logger.Info("Second-to-last page fetched", "posts_on_page", len(secondToLastPage.Posts))
 			// Prepend second-to-last page posts (they're older)
-			allPosts = append(secondToLastPage.Posts, lastPage.Posts...)
+			allPosts = append(allPosts, secondToLastPage.Posts...)
+			allPosts = append(allPosts, lastPage.Posts...)
 		}
+	} else {
+		allPosts = lastPage.Posts
 	}
 
 	return &Page{

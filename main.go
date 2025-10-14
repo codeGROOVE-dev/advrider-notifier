@@ -69,7 +69,7 @@ func main() {
 		}
 
 		// Create local storage directory
-		if err := os.MkdirAll(localStorage, 0o755); err != nil {
+		if err := os.MkdirAll(localStorage, 0o750); err != nil {
 			logger.Error("Failed to create local storage directory", "error", err)
 			os.Exit(1)
 		}
@@ -166,9 +166,9 @@ func main() {
 		port = "8080"
 	}
 
-	if err := srv.ServeHTTP(mediaFS, port); err != nil {
+	err = srv.ServeHTTP(mediaFS, port)
+	if err != nil {
 		logger.Error("Server failed", "error", err)
-		os.Exit(1)
 	}
 }
 
@@ -268,7 +268,9 @@ func isCloudRun(ctx context.Context) bool {
 		return false
 	}
 	defer func() {
-		_ = resp.Body.Close()
+		if err := resp.Body.Close(); err != nil {
+			// Silently ignore close errors for metadata check
+		}
 	}()
 
 	return resp.StatusCode == http.StatusOK

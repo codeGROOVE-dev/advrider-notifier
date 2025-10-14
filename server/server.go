@@ -4,6 +4,7 @@ package server
 import (
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -181,7 +182,7 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if _, err := fmt.Fprintf(w, `{"status":"completed"}`); err != nil {
+	if _, err := fmt.Fprint(w, `{"status":"completed"}`); err != nil {
 		s.logger.Warn("Failed to write response", "error", err)
 	}
 }
@@ -266,12 +267,12 @@ func isValidEmail(email string) bool {
 func normalizeThreadURL(threadURL, threadID string) (string, error) {
 	u, err := url.Parse(threadURL)
 	if err != nil {
-		return "", fmt.Errorf("could not extract thread slug")
+		return "", errors.New("could not extract thread slug")
 	}
 
 	parts := regexp.MustCompile(`/threads/([^/]+)\.(\d+)`).FindStringSubmatch(u.Path)
 	if len(parts) < 2 {
-		return "", fmt.Errorf("could not extract thread slug")
+		return "", errors.New("could not extract thread slug")
 	}
 
 	slug := parts[1]
