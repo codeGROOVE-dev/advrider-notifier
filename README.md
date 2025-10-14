@@ -27,4 +27,6 @@ Server will be available at http://localhost:8080
 
 Apache 2.0 - see LICENSE file
 
-Built by [codeGROOVE llc](https://codegroove.dev)
+---
+
+Built with 🪿 by [codeGROOVE llc](https://codegroove.dev)
