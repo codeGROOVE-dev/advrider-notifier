@@ -126,6 +126,36 @@ func TestSanitizeHTMLBlockquotes(t *testing.T) {
 	}
 }
 
+// TestSanitizeHTMLSelfClosingTags tests that self-closing tags like <br/> and <hr/> are preserved.
+func TestSanitizeHTMLSelfClosingTags(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		contains string
+	}{
+		{"br with slash", "<br/>", "<br>"},
+		{"br with space and slash", "<br />", "<br>"},
+		{"br plain", "<br>", "<br>"},
+		{"hr with slash", "<hr/>", "<hr>"},
+		{"hr with space and slash", "<hr />", "<hr>"},
+		{"hr plain", "<hr>", "<hr>"},
+		{"multiple br tags", "Line 1<br/>Line 2<br />Line 3", "<br>"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := sanitizeHTML(tt.input)
+			if !strings.Contains(result, tt.contains) {
+				t.Errorf("Expected %q to contain %q, got: %q", tt.input, tt.contains, result)
+			}
+			// Ensure tags are NOT escaped
+			if strings.Contains(result, "&lt;br") || strings.Contains(result, "&lt;hr") {
+				t.Errorf("Tags should not be escaped, got: %q", result)
+			}
+		})
+	}
+}
+
 // TestSanitizeHTMLLists tests that lists (ul, ol, li) are preserved.
 func TestSanitizeHTMLLists(t *testing.T) {
 	input := `<ul><li>First item</li><li>Second item</li></ul><ol><li>Numbered</li></ol>`
@@ -387,5 +417,91 @@ func TestExtractAttribute(t *testing.T) {
 		if result != tt.expected {
 			t.Errorf("extractAttribute(%q, %q) = %q, want %q", tt.tag, tt.attr, result, tt.expected)
 		}
+	}
+}
+
+// TestSanitizeHTMLBicyclePost53741781 tests sanitization of real post #53741781 from the Bicycle thread.
+// This post contains nested blockquotes, br tags, and links that must be preserved correctly.
+// URL: https://advrider.com/f/threads/bicycle-thread.150964/page-5412#post-53741781
+func TestSanitizeHTMLBicyclePost53741781(t *testing.T) {
+	// Real HTML from ADVRider post #53741781 by MN_Smurf
+	input := `<div class="bbCodeBlock bbCodeQuote" data-author="Mambo Danny">
+	<aside>
+
+			<div class="attribution type">Mambo Danny said:
+
+					<a href="goto/post?id=53722273#post-53722273" class="AttributionLink">↑</a>
+
+			</div>
+
+		<blockquote class="quoteContainer"><div class="quote">I tried pliers and vise-grips on both, to a moderate amount of force, neither moved.  I can try two sets of vise-grips next.  It was Yoeleo who built the wheels; if it were me I would have used synthetic boat-trailer-bearing grease as the nipple lube.  Of course I don&#39;t have any idea if they used any lube at all, nor if my syn grease would have lasted all that time with salt water exposure.<br/>
+<br/>
+I&#39;m thanking my lucky stars as I had it in the back of my head that I could buy someone&#39;s used tri-bike/time-trial-bike cheap from the mid 20-teens, many of which had aluminum wheels, switch these over to it and have something else to ride.  There was a chance I would have got out there and started moving at 25 MPH or over when one of the wheels would fail.  But the hard use / hard environment is part of why I relegated that carbon fiber Planet X bike to the indoor trainer only.  I&#39;ve been asked why I don&#39;t ride it, and it&#39;s because I don&#39;t trust it anymore.<br/>
+<br/>
+In time I&#39;ll try penetrating oil on each nipple, let that soak a couple days.  Maybe ... maybe... some very focused heat source on the nipple only while trying to keep it away from the carbon fiber rim?  Not sure if that would be like a jet-lighter, maybe the soldering iron?</div><div class="quoteExpand">Click to expand...</div></blockquote>
+	</aside>
+</div>Hate to say it, but just replace the spokes.  Unlike steel, aluminum adds material when it corrodes.  Steel spokes into aluminum nipples in a salt air environment has effectively welded that joint together with galvanic corrosion.  You&#39;re going to destroy the parts trying to get them apart.`
+
+	result := sanitizeHTML(input)
+
+	// Test 1: BR tags should be preserved (not escaped)
+	if !strings.Contains(result, "<br>") {
+		t.Error("BR tags should be preserved as actual tags, not escaped")
+	}
+	if strings.Contains(result, "&lt;br") {
+		t.Error("BR tags should NOT be HTML-escaped")
+	}
+
+	// Test 2: Blockquotes should be preserved
+	if !strings.Contains(result, "<blockquote>") {
+		t.Error("Blockquote tags should be preserved")
+	}
+
+	// Test 3: Links should be preserved with href
+	if !strings.Contains(result, `<a href="goto/post?id=53722273#post-53722273">`) {
+		t.Error("Link href attributes should be preserved")
+	}
+	if !strings.Contains(result, "↑</a>") {
+		t.Error("Link content should be preserved")
+	}
+
+	// Test 4: Div tags should be preserved
+	if !strings.Contains(result, "<div>") {
+		t.Error("Div tags should be preserved")
+	}
+
+	// Test 5: Text content should be fully preserved
+	if !strings.Contains(result, "I tried pliers and vise-grips") {
+		t.Error("Quote text content should be preserved")
+	}
+	if !strings.Contains(result, "Hate to say it, but just replace the spokes") {
+		t.Error("Main post text should be preserved")
+	}
+	if !strings.Contains(result, "galvanic corrosion") {
+		t.Error("Technical terms should be preserved")
+	}
+
+	// Test 6: HTML entities should be preserved (not double-escaped)
+	if !strings.Contains(result, "don&#39;t") {
+		t.Error("HTML entities like &#39; should be preserved as-is")
+	}
+	if strings.Contains(result, "&amp;#39;") {
+		t.Error("HTML entities should NOT be double-escaped")
+	}
+
+	// Test 7: Dangerous attributes should be stripped
+	if strings.Contains(result, `data-author=`) {
+		t.Error("data-author attribute should be stripped from divs")
+	}
+	if strings.Contains(result, `class="bbCodeQuote"`) {
+		t.Error("class attributes should be stripped")
+	}
+	if strings.Contains(result, `class="AttributionLink"`) {
+		t.Error("class attributes should be stripped from links")
+	}
+
+	// Test 8: Aside tags are not in whitelist and should be escaped
+	if strings.Contains(result, "<aside>") {
+		t.Error("Aside tags should be escaped (not in whitelist)")
 	}
 }

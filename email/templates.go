@@ -16,7 +16,7 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	b.WriteString("<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	b.WriteString("<style>\n")
-	b.WriteString("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; background: #fff; }\n")
+	b.WriteString("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 12px 20px; background: #fff; }\n")
 	b.WriteString(".post { padding: 24px 0; border-bottom: 2px solid #e67e22; }\n")
 	b.WriteString(".post:last-of-type { border-bottom: none; padding-bottom: 0; }\n")
 	b.WriteString(".post:first-of-type { padding-top: 0; }\n")
@@ -28,6 +28,7 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	b.WriteString(".content { margin: 15px 0; }\n")
 	b.WriteString(".content img { max-width: 100%; height: auto; margin: 10px 0; display: block; }\n")
 	b.WriteString(".content blockquote { border-left: 3px solid #ddd; padding-left: 15px; margin: 10px 0; color: #666; font-size: 0.95em; }\n")
+	b.WriteString(".content hr { border: none; border-top: 1px solid #ddd; margin: 15px 0; }\n")
 	b.WriteString(".footer { margin-top: 24px; padding-top: 12px; font-size: 0.9em; color: #7f8c8d; }\n")
 	b.WriteString(".footer.with-border { border-top: 1px solid #ddd; }\n")
 	b.WriteString(".footer a { color: #7f8c8d; text-decoration: underline; margin: 0 8px; }\n")
@@ -41,6 +42,7 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	b.WriteString(".timestamp { color: #a0a0a0; }\n")
 	b.WriteString(".content blockquote { border-left-color: #444; color: #b0b0b0; }\n")
 	b.WriteString(".content img { opacity: 0.9; }\n")
+	b.WriteString(".content hr { border-top-color: #444; }\n")
 	b.WriteString(".footer { color: #a0a0a0; }\n")
 	b.WriteString(".footer.with-border { border-top-color: #444; }\n")
 	b.WriteString(".footer a { color: #a0a0a0; }\n")
@@ -65,8 +67,8 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 
 		b.WriteString("<div class=\"content\">\n")
 		// SECURITY: HTML content from forum posts is untrusted user input.
-		// We sanitize it to allow only safe tags (img, blockquote, p, br, b, i, em, strong)
-		// and safe attributes (src, alt for images) to prevent XSS and phishing.
+		// We sanitize it to allow only safe tags (img, blockquote, p, br, hr, b, i, em, strong, ul, ol, li, div, span, a)
+		// and safe attributes (src, alt for images; href for links) to prevent XSS and phishing.
 		if post.HTMLContent != "" {
 			b.WriteString(sanitizeHTML(post.HTMLContent))
 		} else {
@@ -179,6 +181,7 @@ func sanitizeHTML(html string) string {
 	allowedTags := map[string]bool{
 		"p":          true,
 		"br":         true,
+		"hr":         true,
 		"b":          true,
 		"strong":     true,
 		"i":          true,
@@ -221,6 +224,8 @@ func sanitizeHTML(html string) string {
 			if idx := strings.IndexAny(tagContent, " \t\n"); idx != -1 {
 				tagName = tagContent[:idx]
 			}
+			// Handle self-closing tags like <br/> or <img/>
+			tagName = strings.TrimSuffix(tagName, "/")
 			tagName = strings.ToLower(tagName)
 
 			if allowedTags[tagName] {
