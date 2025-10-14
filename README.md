@@ -12,10 +12,10 @@ ADVRider's built-in notifications only email you once after your last visit. Thi
 
 Subscribe to any ADVRider thread and get emails when new posts appear.
 
-**Respectful polling:** Adaptive intervals from ~10 minutes (active threads) to 4 hours using exponential backoff. Minimum poll time is defined as `5min × 2^(hours_since_post / 3)`, with a 10-minute polling loop; shared fetch for all subscribers to minimize load.
-**User limits:** Maximum 20 threads per email address. Notifications batch up to 10 posts to prevent spam.
-**Security:** Token-based subscription management. mail content sanitized to prevent XSS and phishing.
-**Email quality:** Dark mode support, WCAG AA compliant, clickable post anchors linking directly to specific posts.
+- **Respectful polling:** Adaptive intervals from ~10 minutes (active threads) to 4 hours using exponential backoff. Minimum poll time is defined as `5min × 2^(hours_since_post / 3)`, with a 10-minute polling loop; shared fetch for all subscribers to minimize load.
+- **User limits:** Maximum 20 threads per email address. Notifications batch up to 10 posts to prevent spam.
+- **Security:** Token-based subscription management. mail content sanitized to prevent XSS and phishing.
+- **Email quality:** Dark mode support, WCAG AA compliant, clickable post anchors linking directly to specific posts.
 
 ## Running locally
 
