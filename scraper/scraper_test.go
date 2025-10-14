@@ -67,9 +67,17 @@ func TestParseDurhamThread(t *testing.T) {
 	if firstPost.URL == "" {
 		t.Error("First post should have a URL")
 	}
+	if firstPost.Timestamp == "" {
+		t.Error("First post should have a timestamp")
+	} else {
+		// Validate it can be parsed
+		if _, err := time.Parse(time.RFC3339, firstPost.Timestamp); err != nil {
+			t.Errorf("Failed to parse timestamp %q: %v", firstPost.Timestamp, err)
+		}
+	}
 
-	t.Logf("First post ID: %s, Author: %s, Content length: %d bytes",
-		firstPost.ID, firstPost.Author, len(firstPost.Content))
+	t.Logf("First post ID: %s, Author: %s, Timestamp: %s, Content length: %d bytes",
+		firstPost.ID, firstPost.Author, firstPost.Timestamp, len(firstPost.Content))
 
 	// Validate URL format
 	expectedURLPrefix := threadURL + "#post-"
@@ -78,8 +86,8 @@ func TestParseDurhamThread(t *testing.T) {
 	}
 }
 
-// TestParseDurhamThreadLastPage validates we can parse a specific page number.
-func TestParseDurhamThreadLastPage(t *testing.T) {
+// TestParseDurhamThreadPage293 validates we can parse a specific page number.
+func TestParseDurhamThreadPage293(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -108,4 +116,151 @@ func TestParseDurhamThreadLastPage(t *testing.T) {
 		t.Fatal("No posts found on page 293")
 	}
 	t.Logf("Found %d posts on page 293", len(page.Posts))
+
+	// Validate last post has timestamp (most important for latest post tracking)
+	lastPost := page.Posts[len(page.Posts)-1]
+	if lastPost.Timestamp == "" {
+		t.Error("Last post on page 293 should have a timestamp")
+	} else {
+		// Validate it can be parsed
+		parsedTime, err := time.Parse(time.RFC3339, lastPost.Timestamp)
+		if err != nil {
+			t.Errorf("Failed to parse timestamp %q: %v", lastPost.Timestamp, err)
+		} else {
+			t.Logf("Last post ID: %s, Author: %s, Timestamp: %s",
+				lastPost.ID, lastPost.Author, parsedTime.Format(time.RFC3339))
+		}
+	}
+}
+
+// TestParseDurhamThreadLatestPost validates we can fetch the absolute latest post.
+func TestParseDurhamThreadLatestPost(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	s := New(client, logger)
+
+	ctx := context.Background()
+	threadURL := "https://advrider.com/f/threads/durham-rtp-wednesday-advlunch.365943/"
+
+	// Use LatestPost to fetch the most recent post (same as subscription creation does)
+	post, title, err := s.LatestPost(ctx, threadURL)
+	if err != nil {
+		t.Fatalf("Failed to fetch Durham thread latest post: %v", err)
+	}
+
+	t.Logf("Thread title: %q", title)
+	if title == "" {
+		t.Error("Thread title should not be empty")
+	}
+
+	// Validate post ID
+	if post.ID == "" {
+		t.Fatal("Latest post should have an ID")
+	}
+	t.Logf("Latest post ID: %s", post.ID)
+
+	// Validate post timestamp - CRITICAL
+	if post.Timestamp == "" {
+		t.Fatal("Latest post should have a timestamp")
+	}
+	t.Logf("Latest post timestamp: %s", post.Timestamp)
+
+	// Validate timestamp can be parsed as RFC3339
+	parsedTime, err := time.Parse(time.RFC3339, post.Timestamp)
+	if err != nil {
+		t.Fatalf("Failed to parse timestamp %q as RFC3339: %v", post.Timestamp, err)
+	}
+	t.Logf("Parsed timestamp: %s", parsedTime.Format(time.RFC3339))
+
+	// Validate timestamp is reasonable (thread started in 2008, so posts should be after that)
+	now := time.Now()
+	if parsedTime.IsZero() {
+		t.Error("Parsed timestamp should not be zero")
+	}
+	if parsedTime.After(now) {
+		t.Errorf("Parsed timestamp %s is in the future (now: %s)", parsedTime, now)
+	}
+	if parsedTime.Year() < 2008 {
+		t.Errorf("Parsed timestamp %s is before thread creation (2008)", parsedTime)
+	}
+
+	// Validate other post fields
+	if post.Author == "" {
+		t.Error("Latest post should have an author")
+	}
+	if post.Content == "" {
+		t.Error("Latest post should have content")
+	}
+	t.Logf("Latest post by %s, content length: %d bytes", post.Author, len(post.Content))
+}
+
+// TestParseElectricMotorcycleThread validates timestamp parsing for the Electric Motorcycle thread.
+func TestParseElectricMotorcycleThread(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping integration test in short mode")
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	s := New(client, logger)
+
+	ctx := context.Background()
+	threadURL := "https://advrider.com/f/threads/electric-motorcycle-scooter-news-updates.1154248/"
+
+	// Fetch the latest post
+	post, title, err := s.LatestPost(ctx, threadURL)
+	if err != nil {
+		t.Fatalf("Failed to fetch Electric Motorcycle thread: %v", err)
+	}
+
+	// Validate thread title
+	t.Logf("Thread title: %q", title)
+	if title == "" {
+		t.Error("Thread title should not be empty")
+	}
+
+	// Validate post ID
+	if post.ID == "" {
+		t.Fatal("Latest post should have an ID")
+	}
+	t.Logf("Latest post ID: %s", post.ID)
+
+	// Validate post timestamp - THIS IS THE CRITICAL CHECK
+	if post.Timestamp == "" {
+		t.Fatal("Latest post should have a timestamp")
+	}
+	t.Logf("Latest post timestamp: %s", post.Timestamp)
+
+	// Validate timestamp can be parsed as RFC3339
+	parsedTime, err := time.Parse(time.RFC3339, post.Timestamp)
+	if err != nil {
+		t.Fatalf("Failed to parse timestamp %q as RFC3339: %v", post.Timestamp, err)
+	}
+	t.Logf("Parsed timestamp: %s", parsedTime.Format(time.RFC3339))
+
+	// Validate timestamp is not zero and is reasonable (not in the future, not too old)
+	now := time.Now()
+	if parsedTime.IsZero() {
+		t.Error("Parsed timestamp should not be zero")
+	}
+	if parsedTime.After(now) {
+		t.Errorf("Parsed timestamp %s is in the future (now: %s)", parsedTime, now)
+	}
+	// Electric motorcycle thread started in 2013, so posts should be after that
+	if parsedTime.Year() < 2013 {
+		t.Errorf("Parsed timestamp %s is before thread creation (2013)", parsedTime)
+	}
+
+	// Validate other post fields
+	if post.Author == "" {
+		t.Error("Latest post should have an author")
+	}
+	if post.Content == "" {
+		t.Error("Latest post should have content")
+	}
+	t.Logf("Latest post by %s, content length: %d bytes", post.Author, len(post.Content))
 }

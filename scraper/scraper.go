@@ -309,8 +309,30 @@ func parsePage(body interface{ Read([]byte) (int, error) }, threadURL string) (*
 		// Extract author
 		author := strings.TrimSpace(s.Find("a.username").First().Text())
 
-		// Extract timestamp
-		timestamp, _ := s.Find("time").First().Attr("datetime")
+		// Extract timestamp - ADVRider uses two formats:
+		// 1. Older posts: <span class="DateTime" title="Jul 24, 2008 at 12:50 PM">
+		// 2. Recent posts: <abbr class="DateTime" data-time="1760448714" title="Oct 14, 2025 at 9:31 AM">
+		var timestamp string
+		dateTimeElem := s.Find(".DateTime").First()
+		if dateTimeElem.Length() > 0 {
+			// Try abbr with data-time (Unix timestamp) first - this is the most accurate
+			if unixStr, exists := dateTimeElem.Attr("data-time"); exists && unixStr != "" {
+				var unixSec int64
+				if _, err := fmt.Sscanf(unixStr, "%d", &unixSec); err == nil {
+					timestamp = time.Unix(unixSec, 0).UTC().Format(time.RFC3339)
+				}
+			}
+
+			// Fall back to title attribute (human-readable format)
+			if timestamp == "" {
+				if titleStr, exists := dateTimeElem.Attr("title"); exists && titleStr != "" {
+					// Parse ADVRider's title format: "Oct 14, 2025 at 9:31 AM"
+					if t, err := time.Parse("Jan 2, 2006 at 3:04 PM", titleStr); err == nil {
+						timestamp = t.UTC().Format(time.RFC3339)
+					}
+				}
+			}
+		}
 
 		// Extract content from blockquote
 		blockquote := s.Find("blockquote.messageText").First()

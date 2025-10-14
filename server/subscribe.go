@@ -132,12 +132,18 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse post timestamp to initialize LastPostTime
-	var lastPostTime time.Time
-	if post.Timestamp != "" {
-		if t, err := time.Parse(time.RFC3339, post.Timestamp); err == nil {
-			lastPostTime = t
-		}
+	// Validate and parse post timestamp to initialize LastPostTime
+	if post.Timestamp == "" {
+		s.logger.Error("Latest post has empty timestamp", "url", baseThreadURL, "title", threadTitle, "post_id", post.ID)
+		http.Error(w, "Could not determine post timestamp - the page structure may have changed", http.StatusInternalServerError)
+		return
+	}
+
+	lastPostTime, err := time.Parse(time.RFC3339, post.Timestamp)
+	if err != nil {
+		s.logger.Error("Failed to parse post timestamp", "url", baseThreadURL, "title", threadTitle, "post_id", post.ID, "timestamp", post.Timestamp, "error", err)
+		http.Error(w, "Could not parse post timestamp - the page structure may have changed", http.StatusInternalServerError)
+		return
 	}
 
 	s.logger.Info("Creating subscription with latest post ID",

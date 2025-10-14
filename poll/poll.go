@@ -120,18 +120,39 @@ func (m *Monitor) CheckAll(ctx context.Context) error {
 
 		// Use any subscriber's thread info to check intervals (they should all be the same)
 		thread := info.thread
-		interval := calculateInterval(thread.LastPostTime, thread.LastPolledAt)
+		interval, reason := calculateInterval(thread.LastPostTime, thread.LastPolledAt)
 		timeSinceLastPoll := time.Now().Sub(thread.LastPolledAt)
 		needsCheck := timeSinceLastPoll >= interval
+
+		// Format times for logging, handling zero values
+		lastPolledStr := "never"
+		if !thread.LastPolledAt.IsZero() {
+			lastPolledStr = thread.LastPolledAt.Format(time.RFC3339)
+		}
+		lastPostTimeStr := "none"
+		if !thread.LastPostTime.IsZero() {
+			lastPostTimeStr = thread.LastPostTime.Format(time.RFC3339)
+		}
+		timeSinceLastPostStr := "n/a"
+		if !thread.LastPostTime.IsZero() {
+			timeSinceLastPostStr = time.Since(thread.LastPostTime).Round(time.Second).String()
+		}
+		timeSincePollStr := "n/a"
+		if !thread.LastPolledAt.IsZero() {
+			timeSincePollStr = timeSinceLastPoll.Round(time.Second).String()
+		}
 
 		m.logger.Info(fmt.Sprintf("Thread %d/%d: Evaluating", threadNum, len(uniqueThreads)),
 			"cycle", m.cycleNumber,
 			"thread_url", threadURL,
 			"thread_title", thread.ThreadTitle,
 			"subscriber_count", len(info.subscribers),
-			"last_polled", thread.LastPolledAt.Format(time.RFC3339),
-			"time_since_poll", timeSinceLastPoll.Round(time.Second).String(),
+			"last_polled", lastPolledStr,
+			"last_post_time", lastPostTimeStr,
+			"time_since_last_post", timeSinceLastPostStr,
+			"time_since_poll", timeSincePollStr,
 			"required_interval", interval.String(),
+			"interval_reason", reason,
 			"needs_check", needsCheck)
 
 		if !needsCheck {
@@ -288,6 +309,13 @@ func (m *Monitor) checkThreadForSubscribers(ctx context.Context, info *threadChe
 		thread.LastPolledAt = now
 		if !latestPostTime.IsZero() {
 			thread.LastPostTime = latestPostTime
+		} else if thread.LastPostTime.IsZero() {
+			// Log warning if we still don't have a post time after fetching
+			m.logger.Warn("No post timestamp available after fetching thread - interval calculation will default to immediate polling",
+				"cycle", m.cycleNumber,
+				"email", email,
+				"thread_url", threadURL,
+				"thread_title", thread.ThreadTitle)
 		}
 
 		// First check for this subscriber - just record the latest post ID
@@ -445,28 +473,48 @@ func (m *Monitor) checkThreadForSubscribers(ctx context.Context, info *threadChe
 }
 
 // calculateInterval determines how often to poll a thread based on activity.
-func calculateInterval(lastPostTime, lastPolledAt time.Time) time.Duration {
-	// If never polled or never seen a post, poll now
-	if lastPolledAt.IsZero() || lastPostTime.IsZero() {
-		return 0
+// Returns the interval duration and a human-readable reason explaining the decision.
+// NEVER returns 0s - always returns a minimum interval to prevent polling loops.
+func calculateInterval(lastPostTime, lastPolledAt time.Time) (time.Duration, string) {
+	const minInterval = 5 * time.Minute // Minimum safe interval
+
+	// If never polled before, use minimum interval
+	if lastPolledAt.IsZero() {
+		return minInterval, "never polled before (using minimum interval)"
+	}
+
+	// If no post time recorded, use maximum interval (something is wrong)
+	if lastPostTime.IsZero() {
+		return 6 * time.Hour, "ERROR: no post time recorded (using maximum interval to avoid polling loop)"
 	}
 
 	// Calculate time since last post
 	timeSinceLastPost := time.Since(lastPostTime)
 
 	var interval time.Duration
+	var reason string
 	switch {
 	case timeSinceLastPost < 30*time.Minute:
 		interval = 5 * time.Minute
+		reason = "very active thread (post < 30m ago)"
 	case timeSinceLastPost < 2*time.Hour:
 		interval = 10 * time.Minute
+		reason = "active thread (post < 2h ago)"
 	case timeSinceLastPost < 6*time.Hour:
 		interval = 20 * time.Minute
+		reason = "moderately active thread (post < 6h ago)"
 	case timeSinceLastPost < 24*time.Hour:
 		interval = 1 * time.Hour
+		reason = "daily active thread (post < 24h ago)"
 	default:
 		interval = 6 * time.Hour
+		reason = "inactive thread (post > 24h ago)"
 	}
 
-	return interval
+	// Safety check: never return 0s interval
+	if interval == 0 {
+		return minInterval, "ERROR: interval calculation resulted in 0s (using minimum interval)"
+	}
+
+	return interval, reason
 }
