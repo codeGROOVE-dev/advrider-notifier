@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math"
 	"sync"
 	"time"
 
@@ -120,8 +121,8 @@ func (m *Monitor) CheckAll(ctx context.Context) error {
 
 		// Use any subscriber's thread info to check intervals (they should all be the same)
 		thread := info.thread
-		interval, reason := calculateInterval(thread.LastPostTime, thread.LastPolledAt)
-		timeSinceLastPoll := time.Now().Sub(thread.LastPolledAt)
+		interval, reason := CalculateInterval(thread.LastPostTime, thread.LastPolledAt)
+		timeSinceLastPoll := time.Since(thread.LastPolledAt)
 		needsCheck := timeSinceLastPoll >= interval
 
 		// Format times for logging, handling zero values
@@ -472,48 +473,58 @@ func (m *Monitor) checkThreadForSubscribers(ctx context.Context, info *threadChe
 	return hasUpdates, savedEmails, nil
 }
 
-// calculateInterval determines how often to poll a thread based on activity.
-// Returns the interval duration and a human-readable reason explaining the decision.
+// CalculateInterval determines how often to poll a thread based on activity.
+// Uses exponential backoff: the longer since the last post, the less frequently we check.
+// Formula: interval = min(minInterval * 2^(hours_since_post / scaleFactor), maxInterval)
+//
+// This provides smooth scaling:
+//   - 0h since post → 5 minutes
+//   - 3h since post → 10 minutes
+//   - 6h since post → 20 minutes
+//   - 12h since post → 80 minutes
+//   - 24h+ since post → 4 hours (capped)
+//
 // NEVER returns 0s - always returns a minimum interval to prevent polling loops.
-func calculateInterval(lastPostTime, lastPolledAt time.Time) (time.Duration, string) {
+func CalculateInterval(lastPostTime, lastPolledAt time.Time) (time.Duration, string) {
 	const minInterval = 5 * time.Minute // Minimum safe interval
+	const maxInterval = 4 * time.Hour   // Maximum interval for inactive threads
+	const scaleFactor = 3.0             // Hours before interval doubles (smaller = more aggressive backoff)
 
-	// If never polled before, use minimum interval
+	// CRITICAL: These should NEVER be zero after subscription creation.
+	// If they are, it indicates a serious bug in subscription or polling logic.
 	if lastPolledAt.IsZero() {
-		return minInterval, "never polled before (using minimum interval)"
+		return maxInterval, "CRITICAL ERROR: LastPolledAt is zero (this should never happen - bug in subscription creation)"
 	}
 
-	// If no post time recorded, use maximum interval (something is wrong)
 	if lastPostTime.IsZero() {
-		return 6 * time.Hour, "ERROR: no post time recorded (using maximum interval to avoid polling loop)"
+		return maxInterval, "CRITICAL ERROR: LastPostTime is zero (this should never happen - timestamp validation failed)"
 	}
 
 	// Calculate time since last post
-	timeSinceLastPost := time.Since(lastPostTime)
+	hoursSincePost := time.Since(lastPostTime).Hours()
 
-	var interval time.Duration
-	var reason string
-	switch {
-	case timeSinceLastPost < 30*time.Minute:
-		interval = 5 * time.Minute
-		reason = "very active thread (post < 30m ago)"
-	case timeSinceLastPost < 2*time.Hour:
-		interval = 10 * time.Minute
-		reason = "active thread (post < 2h ago)"
-	case timeSinceLastPost < 6*time.Hour:
-		interval = 20 * time.Minute
-		reason = "moderately active thread (post < 6h ago)"
-	case timeSinceLastPost < 24*time.Hour:
-		interval = 1 * time.Hour
-		reason = "daily active thread (post < 24h ago)"
-	default:
-		interval = 6 * time.Hour
-		reason = "inactive thread (post > 24h ago)"
+	// Exponential backoff: interval doubles every scaleFactor hours
+	// Example with scaleFactor=3: 0h→5m, 3h→10m, 6h→20m, 9h→40m, 12h→80m
+	multiplier := math.Pow(2.0, hoursSincePost/scaleFactor)
+	interval := time.Duration(float64(minInterval) * multiplier)
+
+	// Clamp to min/max bounds
+	if interval > maxInterval {
+		interval = maxInterval
+	}
+	if interval < minInterval {
+		interval = minInterval
 	}
 
-	// Safety check: never return 0s interval
-	if interval == 0 {
-		return minInterval, "ERROR: interval calculation resulted in 0s (using minimum interval)"
+	// Format reason with readable time units
+	var reason string
+	switch {
+	case hoursSincePost < 1:
+		reason = fmt.Sprintf("%.0f minutes since last post", hoursSincePost*60)
+	case hoursSincePost < 48:
+		reason = fmt.Sprintf("%.1f hours since last post", hoursSincePost)
+	default:
+		reason = fmt.Sprintf("%.0f days since last post", hoursSincePost/24)
 	}
 
 	return interval, reason

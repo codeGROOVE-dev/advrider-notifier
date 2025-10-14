@@ -1,12 +1,14 @@
 package server
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
 	"advrider-notifier/pkg/notifier"
+	"advrider-notifier/poll"
 )
 
 func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
@@ -146,6 +148,8 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	now := time.Now().UTC()
+
 	s.logger.Info("Creating subscription with latest post ID",
 		"email", email,
 		"thread_id", threadID,
@@ -154,14 +158,15 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		"last_post_time", lastPostTime.Format(time.RFC3339))
 
 	// Add thread to subscription
+	// Set LastPolledAt to now since we just fetched the thread during subscription
 	sub.Threads[threadID] = &notifier.Thread{
 		ThreadURL:    baseThreadURL,
 		ThreadID:     threadID,
 		ThreadTitle:  threadTitle,
 		LastPostID:   post.ID,
 		LastPostTime: lastPostTime,
-		LastPolledAt: time.Time{}, // Will be set on first poll
-		CreatedAt:    time.Now().UTC(),
+		LastPolledAt: now, // Set to now since we just verified the thread
+		CreatedAt:    now,
 	}
 
 	if err := s.store.Save(r.Context(), sub); err != nil {
@@ -170,6 +175,21 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	s.logger.Info("Subscription created", "email", email, "thread_id", threadID, "ip", ip)
+
+	// Trigger immediate poll to notify all existing subscribers about any new posts
+	// This runs asynchronously so we don't block the HTTP response
+	// Use background context since we don't want this tied to the HTTP request lifecycle
+	go func() {
+		pollCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		defer cancel()
+
+		s.logger.Info("Triggering poll after new subscription", "thread_url", baseThreadURL, "email", email)
+		if err := s.poller.CheckAll(pollCtx); err != nil {
+			s.logger.Warn("Post-subscription poll failed", "error", err)
+		}
+	}()
+
 	// Send welcome email
 	userAgent := r.Header.Get("User-Agent")
 	if err := s.emailer.SendWelcome(r.Context(), sub, sub.Threads[threadID], ip, userAgent); err != nil {
@@ -177,7 +197,26 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		s.logger.Warn("Failed to send welcome email", "email", email, "error", err)
 	}
 
-	s.logger.Info("Subscription created", "email", email, "thread_id", threadID, "ip", ip)
+	// Calculate next crawl time based on thread activity
+	interval, reason := poll.CalculateInterval(lastPostTime, now)
+	nextCrawlTime := now.Add(interval)
+
+	// Format time delta for display
+	var crawlTimeStr string
+	switch {
+	case interval < time.Hour:
+		crawlTimeStr = fmt.Sprintf("%d minutes", int(interval.Minutes()))
+	case interval < 2*time.Hour:
+		crawlTimeStr = "1 hour"
+	default:
+		crawlTimeStr = fmt.Sprintf("%d hours", int(interval.Hours()))
+	}
+
+	s.logger.Info("Subscription completed",
+		"email", email,
+		"thread_id", threadID,
+		"next_crawl_in", interval.String(),
+		"crawl_reason", reason)
 
 	// Set cookie to remember email address
 	setEmailCookie(w, email)
@@ -185,7 +224,11 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(http.StatusOK)
-	if err := templates.ExecuteTemplate(w, "subscribed.tmpl", map[string]string{"Email": email}); err != nil {
+	if err := templates.ExecuteTemplate(w, "subscribed.tmpl", map[string]any{
+		"Email":       email,
+		"CrawlTime":   crawlTimeStr,
+		"NextCrawlAt": nextCrawlTime.Format("3:04 PM MST"),
+	}); err != nil {
 		s.logger.Error("Failed to render template", "template", "subscribed.tmpl", "error", err)
 		http.Error(w, "Internal server error", http.StatusInternalServerError)
 	}
