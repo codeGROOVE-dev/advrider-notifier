@@ -44,7 +44,12 @@ func (s *Server) handleManage(w http.ResponseWriter, r *http.Request) {
 	sub, err := s.store.LoadByToken(r.Context(), token)
 	if err != nil {
 		s.logger.Warn("Subscription not found for token", "error", err)
-		http.Error(w, "Subscription not found or token expired", http.StatusNotFound)
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.WriteHeader(http.StatusNotFound)
+		if err := templates.ExecuteTemplate(w, "not_found.tmpl", nil); err != nil {
+			s.logger.Error("Failed to render template", "template", "not_found.tmpl", "error", err)
+			http.Error(w, "Subscription not found", http.StatusNotFound)
+		}
 		return
 	}
 
@@ -71,17 +76,26 @@ func (s *Server) handleManage(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				s.logger.Info("All subscriptions removed", "email", sub.Email)
-			} else {
-				// Save updated subscription
-				if err := s.store.Save(r.Context(), sub); err != nil {
-					s.logger.Error("Failed to save subscription", "error", err)
-					http.Error(w, "Failed to unsubscribe", http.StatusInternalServerError)
-					return
+
+				// Show unsubscribed page instead of redirecting (token no longer valid)
+				w.Header().Set("Content-Type", "text/html; charset=utf-8")
+				w.WriteHeader(http.StatusOK)
+				if err := templates.ExecuteTemplate(w, "unsubscribed.tmpl", nil); err != nil {
+					s.logger.Error("Failed to render template", "template", "unsubscribed.tmpl", "error", err)
+					http.Error(w, "Internal server error", http.StatusInternalServerError)
 				}
-				s.logger.Info("Thread unsubscribed", "email", sub.Email, "thread_id", threadID)
+				return
 			}
 
-			// Redirect back to manage page
+			// Save updated subscription
+			if err := s.store.Save(r.Context(), sub); err != nil {
+				s.logger.Error("Failed to save subscription", "error", err)
+				http.Error(w, "Failed to unsubscribe", http.StatusInternalServerError)
+				return
+			}
+			s.logger.Info("Thread unsubscribed", "email", sub.Email, "thread_id", threadID)
+
+			// Redirect back to manage page (subscription still has other threads)
 			http.Redirect(w, r, "/manage?token="+url.QueryEscape(token), http.StatusSeeOther)
 			return
 		}

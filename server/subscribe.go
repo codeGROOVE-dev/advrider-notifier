@@ -55,7 +55,7 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Verify thread exists by fetching it
-	post, err := s.scraper.LatestPost(r.Context(), baseThreadURL)
+	post, threadTitle, err := s.scraper.LatestPost(r.Context(), baseThreadURL)
 	if err != nil {
 		s.logger.Warn("Failed to verify thread", "url", baseThreadURL, "error", err)
 
@@ -74,6 +74,13 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		}
 
 		http.Error(w, "Could not verify thread URL - make sure it's a valid ADVRider thread", http.StatusBadRequest)
+		return
+	}
+
+	// Validate thread title was successfully parsed
+	if threadTitle == "" {
+		s.logger.Warn("Thread title is empty", "url", baseThreadURL)
+		http.Error(w, "Could not parse thread title - the page structure may have changed or the thread may not exist", http.StatusBadRequest)
 		return
 	}
 
@@ -131,6 +138,7 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	sub.Threads[threadID] = &notifier.Thread{
 		ThreadURL:    baseThreadURL,
 		ThreadID:     threadID,
+		ThreadTitle:  threadTitle,
 		LastPostID:   post.ID,
 		LastPostTime: lastPostTime,
 		LastPolledAt: time.Time{}, // Will be set on first poll

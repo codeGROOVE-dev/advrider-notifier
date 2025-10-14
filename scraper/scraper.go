@@ -54,15 +54,16 @@ func New(client *http.Client, logger *slog.Logger) *Scraper {
 }
 
 // LatestPost fetches just the latest post from a thread.
-func (s *Scraper) LatestPost(ctx context.Context, threadURL string) (*notifier.Post, error) {
-	posts, _, err := s.SmartFetch(ctx, threadURL, "")
+// Returns the latest post and the thread title.
+func (s *Scraper) LatestPost(ctx context.Context, threadURL string) (*notifier.Post, string, error) {
+	posts, title, err := s.SmartFetch(ctx, threadURL, "")
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 	if len(posts) == 0 {
-		return nil, errors.New("no posts found")
+		return nil, "", errors.New("no posts found")
 	}
-	return posts[len(posts)-1], nil
+	return posts[len(posts)-1], title, nil
 }
 
 // SmartFetch fetches posts efficiently using multi-page strategy.

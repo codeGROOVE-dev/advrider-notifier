@@ -32,7 +32,7 @@ var (
 
 // Scraper interface for verifying threads.
 type Scraper interface {
-	LatestPost(ctx context.Context, threadURL string) (*notifier.Post, error)
+	LatestPost(ctx context.Context, threadURL string) (*notifier.Post, string, error)
 }
 
 // Store interface for subscription management.

@@ -4,35 +4,21 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Login Required Forum</title>
+	<link rel="stylesheet" href="/media/style.css">
 	<style>
-		body {
-			font-family: sans-serif;
-			max-width: 900px;
-			margin: 50px auto;
-			padding: 20px;
-		}
-		.error {
-			background: #f8d7da;
-			color: #721c24;
-			padding: 20px;
-			border-radius: 8px;
-			border: 1px solid #f5c6cb;
-		}
-		a {
-			color: #e67e22;
-		}
-		h2 {
-			margin-top: 0;
+		.container {
+			max-width: 700px;
 		}
 	</style>
 </head>
 <body>
-	<div class="error">
-		<h2>⚠️ Login-Required Forum</h2>
-		<p>We apologize, but this thread is in a forum that requires a login to access (like the Jo Momma forum).</p>
+	<div class="container center">
+		<div class="icon">🔒</div>
+		<h1>Login-Required Forum</h1>
+		<p>This thread is in a forum that requires login to access (like the Jo Momma forum).</p>
 		<p>Our notification service cannot monitor login-required forums because we don't have access to authenticate as individual users.</p>
-		<p><strong>Thread URL:</strong><br>{{.ThreadURL}}</p>
-		<p><a href="/">Try a different thread</a></p>
+		<div class="url-box">{{.ThreadURL}}</div>
+		<a href="/">Try a Different Thread</a>
 	</div>
 </body>
 </html>

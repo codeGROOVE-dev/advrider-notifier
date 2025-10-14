@@ -4,30 +4,23 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1">
 	<title>Subscribed!</title>
+	<link rel="stylesheet" href="/media/style.css">
 	<style>
-		body {
-			font-family: sans-serif;
-			max-width: 900px;
-			margin: 50px auto;
-			padding: 20px;
+		.container {
+			max-width: 600px;
 		}
-		.success {
-			background: #d4edda;
-			color: #155724;
-			padding: 20px;
-			border-radius: 8px;
-		}
-		a {
-			color: #e67e22;
+		p:last-of-type {
+			margin-bottom: 32px;
 		}
 	</style>
 </head>
 <body>
-	<div class="success">
-		<h2>✓ Subscription Created!</h2>
+	<div class="container center">
+		<div class="icon">✓</div>
+		<h1>Subscription Created!</h1>
 		<p>You'll receive an email at <strong>{{.Email}}</strong> whenever new posts appear on this thread.</p>
-		<p>Each email will include a secure link to manage your subscriptions.</p>
-		<p><a href="/">Subscribe to another thread</a></p>
+		<p style="font-size: 15px; color: #999;">Each email will include a secure link to manage your subscriptions.</p>
+		<a href="/">Subscribe to Another Thread</a>
 	</div>
 </body>
 </html>
