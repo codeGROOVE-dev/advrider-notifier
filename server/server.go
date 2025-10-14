@@ -2,7 +2,6 @@
 package server
 
 import (
-	"advrider-notifier/pkg/notifier"
 	"context"
 	"embed"
 	"fmt"
@@ -16,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"advrider-notifier/pkg/notifier"
 )
 
 //go:embed tmpl/*.tmpl
@@ -61,46 +62,46 @@ type IsNotFound func(error) bool
 
 // Server handles HTTP requests.
 type Server struct {
-	scraper   Scraper
-	store     Store
-	emailer   Emailer
-	poller    Poller
-	isHTTP403 IsHTTP403
-	isNotFound      IsNotFound
-	baseURL   string
-	logger    *slog.Logger
+	scraper    Scraper
+	store      Store
+	emailer    Emailer
+	poller     Poller
+	isHTTP403  IsHTTP403
+	isNotFound IsNotFound
+	baseURL    string
+	logger     *slog.Logger
 }
 
 // Config holds server configuration.
 type Config struct {
-	Scraper   Scraper
-	Store     Store
-	Emailer   Emailer
-	Poller    Poller
-	IsHTTP403 IsHTTP403
-	IsNotFound      IsNotFound
-	BaseURL   string
-	Logger    *slog.Logger
+	Scraper    Scraper
+	Store      Store
+	Emailer    Emailer
+	Poller     Poller
+	IsHTTP403  IsHTTP403
+	IsNotFound IsNotFound
+	BaseURL    string
+	Logger     *slog.Logger
 }
 
 // New creates a new HTTP server handler.
 func New(cfg *Config) *Server {
 	return &Server{
-		scraper:   cfg.Scraper,
-		store:     cfg.Store,
-		emailer:   cfg.Emailer,
-		poller:    cfg.Poller,
-		isHTTP403: cfg.IsHTTP403,
-		isNotFound:      cfg.IsNotFound,
-		baseURL:   cfg.BaseURL,
-		logger:    cfg.Logger,
+		scraper:    cfg.Scraper,
+		store:      cfg.Store,
+		emailer:    cfg.Emailer,
+		poller:     cfg.Poller,
+		isHTTP403:  cfg.IsHTTP403,
+		isNotFound: cfg.IsNotFound,
+		baseURL:    cfg.BaseURL,
+		logger:     cfg.Logger,
 	}
 }
 
 // ServeHTTP sets up all routes and starts the server.
 func (s *Server) ServeHTTP(mediaFS embed.FS, port string) error {
 	http.HandleFunc("/", s.handleRoot)
-	http.HandleFunc("/health", handleHealth)
+	http.HandleFunc("/health", s.handleHealth)
 	http.HandleFunc("/pollz", s.handlePoll)
 	http.HandleFunc("/subscribe", s.handleSubscribe)
 	http.HandleFunc("/unsubscribe", s.handleUnsubscribe)
@@ -150,7 +151,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleHealth(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 		return
@@ -159,7 +160,7 @@ func handleHealth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if _, err := fmt.Fprint(w, `{"status":"healthy"}`); err != nil {
-		// Can't log here as we don't have access to logger in static function
+		s.logger.Warn("Failed to write health response", "error", err)
 		return
 	}
 }

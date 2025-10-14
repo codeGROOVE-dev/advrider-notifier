@@ -1,22 +1,26 @@
 // Package main implements a Cloud Run service that monitors ADVRider threads
-// and sends email notifications via Gmail API when new posts are detected.
+// and sends email notifications when new posts are detected.
 package main
 
 import (
+	"context"
+	"embed"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
 	"advrider-notifier/email"
 	"advrider-notifier/poll"
 	"advrider-notifier/scraper"
 	"advrider-notifier/server"
 	"advrider-notifier/storage"
-	"context"
-	"embed"
-	"errors"
-	"log/slog"
-	"net/http"
-	"os"
-	"time"
 
 	gcs "cloud.google.com/go/storage"
+	"github.com/codeGROOVE-dev/gsm"
 	"google.golang.org/api/gmail/v1"
 	"google.golang.org/api/option"
 )
@@ -37,11 +41,18 @@ func main() {
 	localStorage := os.Getenv("LOCAL_STORAGE")
 	bucket := os.Getenv("STORAGE_BUCKET")
 	baseURL := os.Getenv("BASE_URL")
-	salt := os.Getenv("SALT")
+	emailProvider := strings.ToLower(os.Getenv("EMAIL_PROVIDER"))
 
+	// Load SALT from GSM or environment variable
+	salt := secret(ctx, "SALT", logger)
 	if salt == "" {
-		logger.Error("SALT environment variable is not set - subscription unsubscribe URLs will be guessable, allowing anyone to unsubscribe any email address. This is a CRITICAL SECURITY ISSUE.")
+		logger.Error("SALT is not set in environment or GSM - subscription unsubscribe URLs will be guessable, allowing anyone to unsubscribe any email address. This is a CRITICAL SECURITY ISSUE.")
 		os.Exit(1)
+	}
+
+	// Default to brevo provider if not specified
+	if emailProvider == "" {
+		emailProvider = "brevo"
 	}
 
 	// Default to local development mode if no bucket specified
@@ -52,34 +63,51 @@ func main() {
 
 	// Local development mode
 	if localStorage != "" {
-		logger.Info("Running in local development mode", "storage_path", localStorage)
+		logger.Info("Running in local development mode", "storage_path", localStorage, "email_provider", emailProvider)
 		if baseURL == "" {
 			baseURL = "http://localhost:8080"
 		}
 
 		// Create local storage directory
-		if err := os.MkdirAll(localStorage, 0755); err != nil {
+		if err := os.MkdirAll(localStorage, 0o755); err != nil {
 			logger.Error("Failed to create local storage directory", "error", err)
 			os.Exit(1)
 		}
 
-		// Mock email unless credentials are provided
-		mockEmail := os.Getenv("GOOGLE_CREDENTIALS_JSON") == ""
-		if mockEmail {
-			logger.Info("Mock email mode enabled (no GOOGLE_CREDENTIALS_JSON)")
+		// Initialize email provider
+		emailSender, err := initEmailProvider(ctx, emailProvider, logger, baseURL)
+		if err != nil {
+			logger.Error("Failed to initialize email provider", "provider", emailProvider, "error", err)
+			os.Exit(1)
 		}
 
-		var gmailService *gmail.Service
-		if !mockEmail {
-			var err error
-			gmailService, err = initGmailService(ctx)
-			if err != nil {
-				logger.Warn("Failed to initialize Gmail service, using mock email", "error", err)
-				mockEmail = true
-			}
+		// Initialize components
+		httpClient := &http.Client{Timeout: 30 * time.Second}
+		scraperSvc := scraper.New(httpClient, logger)
+		storageSvc := storage.New(nil, "", localStorage, []byte(salt), logger)
+		pollSvc := poll.New(scraperSvc, storageSvc, emailSender, logger)
+
+		// Create and run server
+		srv := server.New(&server.Config{
+			Scraper:    scraperSvc,
+			Store:      storageSvc,
+			Emailer:    emailSender,
+			Poller:     pollSvc,
+			IsHTTP403:  scraper.IsHTTP403Error,
+			IsNotFound: storage.IsNotFound,
+			BaseURL:    baseURL,
+			Logger:     logger,
+		})
+
+		port := os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
 		}
 
-		runLocal(ctx, gmailService, localStorage, baseURL, salt, mockEmail, logger)
+		if err := srv.ServeHTTP(mediaFS, port); err != nil {
+			logger.Error("Server failed", "error", err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -94,10 +122,12 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Initialize Gmail service
-	gmailService, err := initGmailService(ctx)
+	logger.Info("Running in production mode", "bucket", bucket, "email_provider", emailProvider)
+
+	// Initialize email provider
+	emailSender, err := initEmailProvider(ctx, emailProvider, logger, baseURL)
 	if err != nil {
-		logger.Error("Failed to initialize Gmail service", "error", err)
+		logger.Error("Failed to initialize email provider", "provider", emailProvider, "error", err)
 		os.Exit(1)
 	}
 
@@ -113,58 +143,22 @@ func main() {
 		}
 	}()
 
-	runProduction(ctx, gmailService, storageClient, bucket, baseURL, salt, logger)
-}
-
-func runLocal(ctx context.Context, gmailService *gmail.Service, localStorage, baseURL, salt string, mockEmail bool, logger *slog.Logger) {
-	// Initialize components
-	httpClient := &http.Client{Timeout: 30 * time.Second}
-	scraperSvc := scraper.New(httpClient, logger)
-	storageSvc := storage.New(nil, "", localStorage, []byte(salt), logger)
-	emailSvc := email.New(gmailService, logger, baseURL, mockEmail)
-	pollSvc := poll.New(scraperSvc, storageSvc, emailSvc, logger)
-
-	// Create server
-	srv := server.New(&server.Config{
-		Scraper:   scraperSvc,
-		Store:     storageSvc,
-		Emailer:   emailSvc,
-		Poller:    pollSvc,
-		IsHTTP403: scraper.IsHTTP403Error,
-		IsNotFound:      storage.IsNotFound,
-		BaseURL:   baseURL,
-		Logger:    logger,
-	})
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	if err := srv.ServeHTTP(mediaFS, port); err != nil {
-		logger.Error("Server failed", "error", err)
-		os.Exit(1)
-	}
-}
-
-func runProduction(ctx context.Context, gmailService *gmail.Service, storageClient *gcs.Client, bucket, baseURL, salt string, logger *slog.Logger) {
 	// Initialize components
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 	scraperSvc := scraper.New(httpClient, logger)
 	storageSvc := storage.New(storageClient, bucket, "", []byte(salt), logger)
-	emailSvc := email.New(gmailService, logger, baseURL, false)
-	pollSvc := poll.New(scraperSvc, storageSvc, emailSvc, logger)
+	pollSvc := poll.New(scraperSvc, storageSvc, emailSender, logger)
 
 	// Create server
 	srv := server.New(&server.Config{
-		Scraper:   scraperSvc,
-		Store:     storageSvc,
-		Emailer:   emailSvc,
-		Poller:    pollSvc,
-		IsHTTP403: scraper.IsHTTP403Error,
-		IsNotFound:      storage.IsNotFound,
-		BaseURL:   baseURL,
-		Logger:    logger,
+		Scraper:    scraperSvc,
+		Store:      storageSvc,
+		Emailer:    emailSender,
+		Poller:     pollSvc,
+		IsHTTP403:  scraper.IsHTTP403Error,
+		IsNotFound: storage.IsNotFound,
+		BaseURL:    baseURL,
+		Logger:     logger,
 	})
 
 	port := os.Getenv("PORT")
@@ -176,6 +170,85 @@ func runProduction(ctx context.Context, gmailService *gmail.Service, storageClie
 		logger.Error("Server failed", "error", err)
 		os.Exit(1)
 	}
+}
+
+// secret retrieves a value from either Google Secret Manager or environment variable.
+// It first checks for an environment variable. If not found, it attempts to load
+// from Secret Manager using the same name (defaults to current GCP project).
+// Returns empty string if not found in either location.
+func secret(ctx context.Context, name string, logger *slog.Logger) string {
+	// First check environment variable
+	if val := os.Getenv(name); val != "" {
+		logger.Debug("Using secret from environment variable", "name", name)
+		return val
+	}
+
+	// Use gsm package to load secret from current project
+	val, err := gsm.Fetch(ctx, name)
+	if err != nil {
+		logger.Warn("Failed to load secret from GSM, continuing without it", "secret", name, "error", err)
+		return ""
+	}
+
+	logger.Debug("Loaded secret from Google Secret Manager", "secret", name)
+	return val
+}
+
+// initEmailProvider initializes the appropriate email provider based on configuration.
+func initEmailProvider(ctx context.Context, providerName string, logger *slog.Logger, baseURL string) (*email.Sender, error) {
+	var provider email.Provider
+	fromAddr := os.Getenv("MAIL_FROM")
+	fromName := os.Getenv("MAIL_NAME")
+
+	// Default from address to postmaster@<domain> based on BASE_URL
+	if fromAddr == "" {
+		// Extract domain from URL
+		domain := strings.TrimPrefix(baseURL, "https://")
+		domain = strings.TrimPrefix(domain, "http://")
+		if idx := strings.Index(domain, "/"); idx != -1 {
+			domain = domain[:idx]
+		}
+		if idx := strings.Index(domain, ":"); idx != -1 {
+			domain = domain[:idx]
+		}
+		if domain != "" {
+			fromAddr = "postmaster@" + domain
+		}
+	}
+
+	if fromName == "" {
+		fromName = "ADVRider Notifier"
+	}
+
+	switch providerName {
+	case "brevo":
+		apiKey := secret(ctx, "BREVO_API_KEY", logger)
+		if apiKey == "" {
+			return nil, errors.New("BREVO_API_KEY required for Brevo provider (set in environment or GSM)")
+		}
+		if fromAddr == "" {
+			return nil, errors.New("MAIL_FROM could not be determined (set BASE_URL or MAIL_FROM)")
+		}
+		logger.Info("Initializing Brevo email provider", "from", fromAddr, "name", fromName)
+		provider = email.NewBrevoProvider(apiKey, fromAddr, fromName, logger)
+
+	case "gmail":
+		gmailService, err := initGmailService(ctx, logger)
+		if err != nil {
+			return nil, fmt.Errorf("initialize Gmail service: %w", err)
+		}
+		logger.Info("Initializing Gmail email provider", "from", fromAddr)
+		provider = email.NewGmailProvider(gmailService, logger)
+
+	case "mock":
+		logger.Info("Initializing mock email provider (no emails will be sent)", "from", fromAddr)
+		provider = email.NewMockProvider(logger)
+
+	default:
+		return nil, fmt.Errorf("unknown email provider: %s (valid options: brevo, gmail, mock)", providerName)
+	}
+
+	return email.New(provider, logger, baseURL, fromAddr), nil
 }
 
 // isCloudRun checks if we're running in a GCP environment by querying the metadata server.
@@ -201,20 +274,24 @@ func isCloudRun(ctx context.Context) bool {
 	return resp.StatusCode == http.StatusOK
 }
 
-func initGmailService(ctx context.Context) (*gmail.Service, error) {
+func initGmailService(ctx context.Context, logger *slog.Logger) (*gmail.Service, error) {
+	// Use gmail.GmailSendScope for send-only access (principle of least privilege)
+	// This is more secure than using full Gmail access
+	scope := option.WithScopes(gmail.GmailSendScope)
+
 	// Try explicit credentials first (for local development or specific use cases)
-	credsJSON := os.Getenv("GOOGLE_CREDENTIALS_JSON")
+	credsJSON := secret(ctx, "GOOGLE_CREDENTIALS_JSON", logger)
 	if credsJSON != "" {
-		return gmail.NewService(ctx, option.WithCredentialsJSON([]byte(credsJSON)))
+		return gmail.NewService(ctx, option.WithCredentialsJSON([]byte(credsJSON)), scope)
 	}
 
 	// If running in Cloud Run, use Application Default Credentials (ADC)
 	// This automatically uses the service account
 	// The service account needs Gmail API access (gmail.send scope)
 	if isCloudRun(ctx) {
-		return gmail.NewService(ctx)
+		return gmail.NewService(ctx, scope)
 	}
 
 	// Not in Cloud Run and no explicit credentials
-	return nil, errors.New("GOOGLE_CREDENTIALS_JSON required when not running in Cloud Run")
+	return nil, errors.New("GOOGLE_CREDENTIALS_JSON required when not running in Cloud Run (set in environment or GSM)")
 }

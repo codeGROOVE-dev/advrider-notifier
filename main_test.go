@@ -1,12 +1,13 @@
 package main
 
 import (
-	"advrider-notifier/email"
-	"advrider-notifier/pkg/notifier"
 	"log/slog"
 	"os"
 	"strings"
 	"testing"
+
+	"advrider-notifier/email"
+	"advrider-notifier/pkg/notifier"
 )
 
 func TestGetText(t *testing.T) {
@@ -41,7 +42,8 @@ func TestFormatEmailBody(t *testing.T) {
 		Level: slog.LevelInfo,
 	}))
 
-	sender := email.New(nil, logger, "https://test.example.com", true)
+	mockProvider := email.NewMockProvider(logger)
+	sender := email.New(mockProvider, logger, "https://test.example.com", "test@example.com")
 
 	sub := &notifier.Subscription{
 		Email: "test@example.com",

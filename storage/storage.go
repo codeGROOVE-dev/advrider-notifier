@@ -2,7 +2,6 @@
 package storage
 
 import (
-	"advrider-notifier/pkg/notifier"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
@@ -15,6 +14,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"advrider-notifier/pkg/notifier"
 
 	"cloud.google.com/go/storage"
 	"google.golang.org/api/iterator"
@@ -89,7 +90,7 @@ func (s *Store) Save(ctx context.Context, sub *notifier.Subscription) error {
 	// Local filesystem storage
 	if s.localPath != "" {
 		filePath := filepath.Join(s.localPath, key)
-		if err := os.WriteFile(filePath, data, 0644); err != nil {
+		if err := os.WriteFile(filePath, data, 0o644); err != nil {
 			return fmt.Errorf("write to local storage: %w", err)
 		}
 

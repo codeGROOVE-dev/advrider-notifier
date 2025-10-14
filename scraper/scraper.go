@@ -2,7 +2,6 @@
 package scraper
 
 import (
-	"advrider-notifier/pkg/notifier"
 	"context"
 	"errors"
 	"fmt"
@@ -10,6 +9,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"advrider-notifier/pkg/notifier"
 
 	"github.com/PuerkitoBio/goquery"
 	"github.com/codeGROOVE-dev/retry"
@@ -225,7 +226,7 @@ func (s *Scraper) fetchSinglePage(ctx context.Context, pageURL string) (*Page, e
 
 			return nil
 		},
-		retry.Attempts(10),
+		retry.Attempts(3),
 		retry.Delay(time.Second),
 		retry.MaxDelay(2*time.Minute),
 		retry.MaxJitter(10*time.Second),
@@ -238,7 +239,6 @@ func (s *Scraper) fetchSinglePage(ctx context.Context, pageURL string) (*Page, e
 			return !IsHTTP403Error(err)
 		}),
 	)
-
 	if err != nil {
 		return nil, fmt.Errorf("after retries: %w", err)
 	}

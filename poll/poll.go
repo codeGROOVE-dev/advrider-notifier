@@ -2,12 +2,13 @@
 package poll
 
 import (
-	"advrider-notifier/pkg/notifier"
 	"context"
 	"errors"
 	"fmt"
 	"log/slog"
 	"time"
+
+	"advrider-notifier/pkg/notifier"
 )
 
 const maxPostsPerEmail = 5 // Safety limit: max posts to include in a single email

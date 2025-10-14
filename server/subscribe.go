@@ -1,11 +1,12 @@
 package server
 
 import (
-	"advrider-notifier/pkg/notifier"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
+
+	"advrider-notifier/pkg/notifier"
 )
 
 func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
