@@ -92,6 +92,11 @@ func (m *Monitor) CheckAll(ctx context.Context) error {
 					needsCheck:  false,
 					subscribers: make(map[string]*notifier.Subscription),
 				}
+			} else if thread.LastPolledAt.IsZero() && !uniqueThreads[thread.ThreadURL].thread.LastPolledAt.IsZero() {
+				// If we already have this thread but current subscriber needs immediate check (LastPolledAt.IsZero()),
+				// use this subscriber's state instead so the thread gets polled immediately
+				uniqueThreads[thread.ThreadURL].thread = thread
+				uniqueThreads[thread.ThreadURL].threadID = threadID
 			}
 			uniqueThreads[thread.ThreadURL].subscribers[sub.Email] = sub
 		}
@@ -120,9 +125,23 @@ func (m *Monitor) CheckAll(ctx context.Context) error {
 
 		// Use any subscriber's thread info to check intervals (they should all be the same)
 		thread := info.thread
-		interval, reason := CalculateInterval(thread.LastPostTime, thread.LastPolledAt)
-		timeSinceLastPoll := time.Since(thread.LastPolledAt)
-		needsCheck := timeSinceLastPoll >= interval
+
+		// New subscriptions (LastPolledAt.IsZero()) should be checked immediately
+		var interval time.Duration
+		var reason string
+		var timeSinceLastPoll time.Duration
+		var needsCheck bool
+
+		if thread.LastPolledAt.IsZero() {
+			// New subscription - check immediately
+			interval = 0
+			reason = "new subscription - first check"
+			needsCheck = true
+		} else {
+			interval, reason = CalculateInterval(thread.LastPostTime, thread.LastPolledAt)
+			timeSinceLastPoll = time.Since(thread.LastPolledAt)
+			needsCheck = timeSinceLastPoll >= interval
+		}
 
 		// Format times for logging, handling zero values
 		lastPolledStr := "never"
@@ -238,8 +257,29 @@ func (m *Monitor) checkThreadForSubscribers(
 	}
 
 	if len(posts) == 0 {
-		m.updateLastPolledForAllSubscribers(info, now)
-		return false, nil, nil
+		// Update LastPolledAt for all subscribers and save
+		savedEmails := make(map[string]bool)
+		for email, sub := range info.subscribers {
+			thread := sub.Threads[info.threadID]
+			if thread == nil {
+				m.logger.Error("CRITICAL: Thread not found when updating poll time - data corruption",
+					"cycle", m.cycleNumber,
+					"thread_id", info.threadID)
+				continue
+			}
+			thread.LastPolledAt = now
+
+			if err := m.store.Save(ctx, sub); err != nil {
+				m.logger.Error("Failed to save state after no posts returned",
+					"cycle", m.cycleNumber,
+					"email", email,
+					"thread_url", threadURL,
+					"error", err)
+			} else {
+				savedEmails[email] = true
+			}
+		}
+		return false, savedEmails, nil
 	}
 
 	latestPost := posts[len(posts)-1]
@@ -275,12 +315,23 @@ func (m *Monitor) checkThreadForSubscribers(
 			"last_post_id", thread.LastPostID)
 
 		// Update poll time and latest post time for this subscriber
-		m.updateSubscriberTimestamps(thread, now, latestPostTime, email, threadURL)
+		thread.LastPolledAt = now
+		if !latestPostTime.IsZero() {
+			thread.LastPostTime = latestPostTime
+		} else if thread.LastPostTime.IsZero() {
+			m.logger.Warn("No post timestamp available after fetching thread - interval calculation will default to immediate polling",
+				"cycle", m.cycleNumber,
+				"email", email,
+				"thread_url", threadURL,
+				"thread_title", thread.ThreadTitle)
+		}
 
-		// First check for this subscriber - just record the latest post ID without notification
+		// Legacy/recovery case: If LastPostID is empty (shouldn't happen for subscriptions created via
+		// the subscribe handler, but could occur from manual storage edits or migrations), just record
+		// the current latest post without sending a notification.
 		if thread.LastPostID == "" {
 			thread.LastPostID = latestPost.ID
-			m.logger.Info("New subscriber - recording initial state without notification",
+			m.logger.Info("Empty LastPostID detected - recording current state without notification (recovery mode)",
 				"cycle", m.cycleNumber,
 				"email", email,
 				"thread_url", threadURL,
@@ -369,34 +420,6 @@ func (m *Monitor) fetchThreadPosts(
 	}
 
 	return posts, latestPostTime, nil
-}
-
-// updateLastPolledForAllSubscribers updates LastPolledAt for all subscribers when no posts are found.
-func (m *Monitor) updateLastPolledForAllSubscribers(info *threadCheckInfo, now time.Time) {
-	for _, sub := range info.subscribers {
-		thread := sub.Threads[info.threadID]
-		if thread == nil {
-			m.logger.Error("CRITICAL: Thread not found when updating poll time - data corruption",
-				"cycle", m.cycleNumber,
-				"thread_id", info.threadID)
-			continue
-		}
-		thread.LastPolledAt = now
-	}
-}
-
-// updateSubscriberTimestamps updates LastPolledAt and LastPostTime for a subscriber.
-func (m *Monitor) updateSubscriberTimestamps(thread *notifier.Thread, now, latestPostTime time.Time, email, threadURL string) {
-	thread.LastPolledAt = now
-	if !latestPostTime.IsZero() {
-		thread.LastPostTime = latestPostTime
-	} else if thread.LastPostTime.IsZero() {
-		m.logger.Warn("No post timestamp available after fetching thread - interval calculation will default to immediate polling",
-			"cycle", m.cycleNumber,
-			"email", email,
-			"thread_url", threadURL,
-			"thread_title", thread.ThreadTitle)
-	}
 }
 
 // findNewPosts identifies new posts for a subscriber since their last seen post.

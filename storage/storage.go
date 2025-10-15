@@ -15,8 +15,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"cloud.google.com/go/storage"
+	"github.com/codeGROOVE-dev/retry"
 	"google.golang.org/api/iterator"
 )
 
@@ -97,16 +99,32 @@ func (s *Store) Save(ctx context.Context, sub *notifier.Subscription) error {
 		return nil
 	}
 
-	// Cloud Storage
-	w := s.client.Bucket(s.bucket).Object(key).NewWriter(ctx)
-	if _, err := w.Write(data); err != nil {
-		if closeErr := w.Close(); closeErr != nil {
-			s.logger.Warn("Failed to close writer after error", "error", closeErr)
-		}
-		return fmt.Errorf("write to storage: %w", err)
-	}
-	if err := w.Close(); err != nil {
-		return fmt.Errorf("close storage writer: %w", err)
+	// Cloud Storage with retry logic for reliability
+	err = retry.Do(
+		func() error {
+			w := s.client.Bucket(s.bucket).Object(key).NewWriter(ctx)
+			if _, writeErr := w.Write(data); writeErr != nil {
+				if closeErr := w.Close(); closeErr != nil {
+					s.logger.Warn("Failed to close writer after error", "error", closeErr)
+				}
+				return fmt.Errorf("write to storage: %w", writeErr)
+			}
+			if closeErr := w.Close(); closeErr != nil {
+				return fmt.Errorf("close storage writer: %w", closeErr)
+			}
+			return nil
+		},
+		retry.Attempts(3),
+		retry.Delay(time.Second),
+		retry.MaxDelay(2*time.Minute),
+		retry.MaxJitter(10*time.Second),
+		retry.Context(ctx),
+		retry.OnRetry(func(n uint, retryErr error) {
+			s.logger.Info("Retrying save operation after error", "attempt", n, "key", key, "error", retryErr)
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("save after retries: %w", err)
 	}
 
 	s.logger.Info("Subscription saved", "key", key, "email", sub.Email, "thread_count", len(sub.Threads))
@@ -140,20 +158,40 @@ func (s *Store) Load(ctx context.Context, key string) (*notifier.Subscription, e
 			return nil, fmt.Errorf("read from local storage: %w", err)
 		}
 	} else {
-		// Cloud Storage
-		r, err := s.client.Bucket(s.bucket).Object(key).NewReader(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("open storage reader: %w", err)
-		}
-		defer func() {
-			if closeErr := r.Close(); closeErr != nil {
-				s.logger.Warn("Failed to close storage reader", "error", closeErr)
-			}
-		}()
+		// Cloud Storage with retry logic for reliability
+		err = retry.Do(
+			func() error {
+				r, openErr := s.client.Bucket(s.bucket).Object(key).NewReader(ctx)
+				if openErr != nil {
+					// Don't retry on "not found" errors
+					if errors.Is(openErr, storage.ErrObjectNotExist) {
+						return retry.Unrecoverable(fmt.Errorf("open storage reader: %w", openErr))
+					}
+					return fmt.Errorf("open storage reader: %w", openErr)
+				}
+				defer func() {
+					if closeErr := r.Close(); closeErr != nil {
+						s.logger.Warn("Failed to close storage reader", "error", closeErr)
+					}
+				}()
 
-		data, err = io.ReadAll(r)
+				data, err = io.ReadAll(r)
+				if err != nil {
+					return fmt.Errorf("read from storage: %w", err)
+				}
+				return nil
+			},
+			retry.Attempts(3),
+			retry.Delay(time.Second),
+			retry.MaxDelay(2*time.Minute),
+			retry.MaxJitter(10*time.Second),
+			retry.Context(ctx),
+			retry.OnRetry(func(n uint, retryErr error) {
+				s.logger.Info("Retrying load operation after error", "attempt", n, "key", key, "error", retryErr)
+			}),
+		)
 		if err != nil {
-			return nil, fmt.Errorf("read from storage: %w", err)
+			return nil, fmt.Errorf("load after retries: %w", err)
 		}
 	}
 
@@ -184,9 +222,29 @@ func (s *Store) Delete(ctx context.Context, email string) error {
 		return nil
 	}
 
-	// Cloud Storage
-	if err := s.client.Bucket(s.bucket).Object(key).Delete(ctx); err != nil {
-		return fmt.Errorf("delete from storage: %w", err)
+	// Cloud Storage with retry logic for reliability
+	err := retry.Do(
+		func() error {
+			if deleteErr := s.client.Bucket(s.bucket).Object(key).Delete(ctx); deleteErr != nil {
+				// Don't retry on "not found" errors - deletion is idempotent
+				if errors.Is(deleteErr, storage.ErrObjectNotExist) {
+					return retry.Unrecoverable(fmt.Errorf("delete from storage: %w", deleteErr))
+				}
+				return fmt.Errorf("delete from storage: %w", deleteErr)
+			}
+			return nil
+		},
+		retry.Attempts(3),
+		retry.Delay(time.Second),
+		retry.MaxDelay(2*time.Minute),
+		retry.MaxJitter(10*time.Second),
+		retry.Context(ctx),
+		retry.OnRetry(func(n uint, retryErr error) {
+			s.logger.Info("Retrying delete operation after error", "attempt", n, "key", key, "error", retryErr)
+		}),
+	)
+	if err != nil {
+		return fmt.Errorf("delete after retries: %w", err)
 	}
 
 	s.logger.Info("Subscription deleted", "key", key, "email", email)

@@ -2,26 +2,16 @@ package server
 
 import (
 	"advrider-notifier/pkg/notifier"
-	"advrider-notifier/poll"
-	"context"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 )
 
-//nolint:maintidx,funlen,varnamelen // HTTP handler with comprehensive validation - complexity justified for security
+//nolint:funlen,varnamelen // HTTP handler with comprehensive validation - complexity justified for security
 func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	// Rate limiting by IP
-	ip := clientIP(r)
-	if !globalRateLimiter.allow(ip) {
-		s.logger.Warn("Rate limit exceeded", "ip", ip)
-		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
 		return
 	}
 
@@ -158,14 +148,15 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		"last_post_time", lastPostTime.Format(time.RFC3339))
 
 	// Add thread to subscription
-	// Set LastPolledAt to now since we just fetched the thread during subscription
+	// Leave LastPolledAt as zero time - this signals to the poller that this is a new subscription
+	// The poller will check it immediately on the next poll cycle
 	sub.Threads[threadID] = &notifier.Thread{
 		ThreadURL:    baseThreadURL,
 		ThreadID:     threadID,
 		ThreadTitle:  threadTitle,
 		LastPostID:   post.ID,
 		LastPostTime: lastPostTime,
-		LastPolledAt: now, // Set to now since we just verified the thread
+		LastPolledAt: time.Time{}, // Zero time signals new subscription needing immediate check
 		CreatedAt:    now,
 	}
 
@@ -175,49 +166,24 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.logger.Info("Subscription created", "email", email, "thread_id", threadID, "ip", ip)
-
-	// Trigger immediate poll to notify all existing subscribers about any new posts
-	// This runs asynchronously so we don't block the HTTP response
-	// Use background context since we don't want this tied to the HTTP request lifecycle
-	//nolint:contextcheck // Background context intentional - we don't want this tied to HTTP request lifecycle
-	go func() {
-		pollCtx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-		defer cancel()
-
-		s.logger.Info("Triggering poll after new subscription", "thread_url", baseThreadURL, "email", email)
-		if err := s.poller.CheckAll(pollCtx); err != nil {
-			s.logger.Warn("Post-subscription poll failed", "error", err)
-		}
-	}()
+	s.logger.Info("Subscription created", "email", email, "thread_id", threadID)
 
 	// Send welcome email
 	userAgent := r.Header.Get("User-Agent")
-	if err := s.emailer.SendWelcome(r.Context(), sub, sub.Threads[threadID], ip, userAgent); err != nil {
+	if err := s.emailer.SendWelcome(r.Context(), sub, sub.Threads[threadID], "", userAgent); err != nil {
 		// Log error but don't fail the subscription
 		s.logger.Warn("Failed to send welcome email", "email", email, "error", err)
 	}
 
-	// Calculate next crawl time based on thread activity
-	interval, reason := poll.CalculateInterval(lastPostTime, now)
-	nextCrawlTime := now.Add(interval)
-
-	// Format time delta for display
-	var crawlTimeStr string
-	switch {
-	case interval < time.Hour:
-		crawlTimeStr = fmt.Sprintf("%d minutes", int(interval.Minutes()))
-	case interval < 2*time.Hour:
-		crawlTimeStr = "1 hour"
-	default:
-		crawlTimeStr = fmt.Sprintf("%d hours", int(interval.Hours()))
-	}
+	// For new subscriptions, the thread will be checked on the next poll cycle (within 5 minutes)
+	// We can't use CalculateInterval here because LastPolledAt is zero (not yet polled)
+	crawlTimeStr := "5 minutes"
+	nextCrawlTime := now.Add(5 * time.Minute)
 
 	s.logger.Info("Subscription completed",
 		"email", email,
 		"thread_id", threadID,
-		"next_crawl_in", interval.String(),
-		"crawl_reason", reason)
+		"next_crawl_in", crawlTimeStr)
 
 	// Set cookie to remember email address
 	setEmailCookie(w, email)

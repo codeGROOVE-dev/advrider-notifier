@@ -6,15 +6,8 @@ import (
 	"net/url"
 )
 
+//nolint:revive // Server receiver needed for consistency with other handlers
 func (s *Server) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
-	// Rate limiting by IP to prevent token enumeration
-	ip := clientIP(r)
-	if !globalRateLimiter.allow(ip) {
-		s.logger.Warn("Rate limit exceeded", "ip", ip)
-		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
-		return
-	}
-
 	// Redirect to manage page with token
 	token := r.URL.Query().Get("token")
 	if token == "" || len(token) != 64 {
@@ -27,14 +20,6 @@ func (s *Server) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 
 //nolint:varnamelen // Standard http.Handler parameter names
 func (s *Server) handleManage(w http.ResponseWriter, r *http.Request) {
-	// Rate limiting by IP to prevent token enumeration
-	ip := clientIP(r)
-	if !globalRateLimiter.allow(ip) {
-		s.logger.Warn("Rate limit exceeded", "ip", ip)
-		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
-		return
-	}
-
 	token := r.URL.Query().Get("token")
 	if token == "" || len(token) != 64 {
 		http.Error(w, "Invalid or missing token", http.StatusBadRequest)

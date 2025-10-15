@@ -2,7 +2,6 @@
 package server
 
 import (
-	"advrider-notifier/pkg/notifier"
 	"context"
 	"embed"
 	"errors"
@@ -14,9 +13,9 @@ import (
 	"net/mail"
 	"net/url"
 	"regexp"
-	"strings"
-	"sync"
 	"time"
+
+	"advrider-notifier/pkg/notifier"
 )
 
 //go:embed tmpl/*.tmpl
@@ -171,16 +170,7 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// SECURITY: Rate limit poll endpoint to prevent DoS attacks
-	// Even though CheckAll has a mutex, we want to prevent log spam and CPU waste
-	ip := clientIP(r)
-	if !globalRateLimiter.allow(ip) {
-		s.logger.Warn("Rate limit exceeded on poll endpoint", "ip", ip)
-		http.Error(w, "Too many requests. Please try again later.", http.StatusTooManyRequests)
-		return
-	}
-
-	s.logger.Info("Poll endpoint triggered", "ip", ip)
+	s.logger.Info("Poll endpoint triggered")
 
 	if err := s.poller.CheckAll(r.Context()); err != nil {
 		s.logger.Error("Poll check failed", "error", err)
@@ -193,85 +183,6 @@ func (s *Server) handlePoll(w http.ResponseWriter, r *http.Request) {
 	if _, err := fmt.Fprint(w, `{"status":"completed"}`); err != nil {
 		s.logger.Warn("Failed to write response", "error", err)
 	}
-}
-
-// Rate limiter for all HTTP requests (max 5 per second per IP).
-type rateLimiter struct {
-	clients     map[string][]time.Time
-	mu          sync.Mutex
-	lastCleanup time.Time
-}
-
-func (rl *rateLimiter) allow(ip string) bool {
-	rl.mu.Lock()
-	defer rl.mu.Unlock()
-
-	now := time.Now()
-	cutoff := now.Add(-time.Second)
-
-	// Periodic cleanup of old IP entries (every minute)
-	if now.Sub(rl.lastCleanup) > time.Minute {
-		for ip, timestamps := range rl.clients {
-			var recent []time.Time
-			for _, ts := range timestamps {
-				if ts.After(cutoff) {
-					recent = append(recent, ts)
-				}
-			}
-			if len(recent) == 0 {
-				delete(rl.clients, ip) // Remove empty entries to prevent memory leak
-			} else {
-				rl.clients[ip] = recent
-			}
-		}
-		rl.lastCleanup = now
-	}
-
-	// Clean old entries for this specific IP
-	timestamps := rl.clients[ip]
-	var recent []time.Time
-	for _, ts := range timestamps {
-		if ts.After(cutoff) {
-			recent = append(recent, ts)
-		}
-	}
-
-	if len(recent) >= 5 {
-		return false
-	}
-
-	recent = append(recent, now)
-	rl.clients[ip] = recent
-	return true
-}
-
-var globalRateLimiter = &rateLimiter{
-	clients: make(map[string][]time.Time),
-}
-
-func clientIP(r *http.Request) string {
-	// In Cloud Run, Google's load balancer sets X-Forwarded-For with the client's real IP.
-	// The load balancer strips any existing X-Forwarded-For headers from the client,
-	// so this header is trusted in Cloud Run environments.
-	// This is documented at: https://cloud.google.com/run/docs/reference/request-headers
-	//
-	// For defense-in-depth, we take the FIRST IP in X-Forwarded-For (client IP),
-	// not the last one, to prevent X-Forwarded-For injection attacks in misconfigured proxies.
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// X-Forwarded-For format: "client, proxy1, proxy2"
-		// We want the first (leftmost) IP which is the original client
-		if idx := strings.Index(xff, ","); idx != -1 {
-			return strings.TrimSpace(xff[:idx])
-		}
-		return strings.TrimSpace(xff)
-	}
-
-	// Fallback to RemoteAddr for local development without a proxy
-	ip := r.RemoteAddr
-	if idx := strings.LastIndex(ip, ":"); idx != -1 {
-		ip = ip[:idx]
-	}
-	return ip
 }
 
 func isValidEmail(email string) bool {
