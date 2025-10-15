@@ -145,10 +145,10 @@ func (s *Store) Load(ctx context.Context, key string) (*notifier.Subscription, e
 	}
 
 	var data []byte
-	var err error
 
 	// Local filesystem storage
 	if s.localPath != "" {
+		var err error
 		filePath := filepath.Join(s.localPath, key)
 		data, err = os.ReadFile(filePath)
 		if err != nil {
@@ -159,7 +159,8 @@ func (s *Store) Load(ctx context.Context, key string) (*notifier.Subscription, e
 		}
 	} else {
 		// Cloud Storage with retry logic for reliability
-		err = retry.Do(
+		var readData []byte
+		err := retry.Do(
 			func() error {
 				r, openErr := s.client.Bucket(s.bucket).Object(key).NewReader(ctx)
 				if openErr != nil {
@@ -175,9 +176,10 @@ func (s *Store) Load(ctx context.Context, key string) (*notifier.Subscription, e
 					}
 				}()
 
-				data, err = io.ReadAll(r)
-				if err != nil {
-					return fmt.Errorf("read from storage: %w", err)
+				var readErr error
+				readData, readErr = io.ReadAll(r)
+				if readErr != nil {
+					return fmt.Errorf("read from storage: %w", readErr)
 				}
 				return nil
 			},
@@ -193,6 +195,7 @@ func (s *Store) Load(ctx context.Context, key string) (*notifier.Subscription, e
 		if err != nil {
 			return nil, fmt.Errorf("load after retries: %w", err)
 		}
+		data = readData
 	}
 
 	var sub notifier.Subscription
