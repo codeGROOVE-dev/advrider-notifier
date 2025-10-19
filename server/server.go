@@ -2,6 +2,7 @@
 package server
 
 import (
+	"advrider-notifier/pkg/notifier"
 	"context"
 	"embed"
 	"errors"
@@ -14,15 +15,13 @@ import (
 	"net/url"
 	"regexp"
 	"time"
-
-	"advrider-notifier/pkg/notifier"
 )
 
 //go:embed tmpl/*.tmpl
 var templateFS embed.FS
 
 var (
-	advRiderThreadRegex = regexp.MustCompile(`^https://advrider\.com/f/threads/[^/]+\.(\d+)(/.*)?$`)
+	advRiderThreadRegex = regexp.MustCompile(`^https://(www\.)?advrider\.com/f/threads/[^/]+\.(\d+)(/.*)?$`)
 	emailRegex          = regexp.MustCompile(`^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$`)
 
 	// Templates.
@@ -65,10 +64,10 @@ type Server struct {
 	store      Store
 	emailer    Emailer
 	poller     Poller
+	logger     *slog.Logger
 	isHTTP403  IsHTTP403
 	isNotFound IsNotFound
 	baseURL    string
-	logger     *slog.Logger
 }
 
 // Config holds server configuration.
@@ -77,10 +76,10 @@ type Config struct {
 	Store      Store
 	Emailer    Emailer
 	Poller     Poller
+	Logger     *slog.Logger
 	IsHTTP403  IsHTTP403
 	IsNotFound IsNotFound
 	BaseURL    string
-	Logger     *slog.Logger
 }
 
 // New creates a new HTTP server handler.

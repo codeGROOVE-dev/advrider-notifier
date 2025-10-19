@@ -234,14 +234,16 @@ func (m *Monitor) CheckAll(ctx context.Context) error {
 }
 
 type threadCheckInfo struct {
-	threadID    string
 	thread      *notifier.Thread
-	needsCheck  bool
 	subscribers map[string]*notifier.Subscription
+	threadID    string
+	needsCheck  bool
 }
 
 // checkThreadForSubscribers checks a thread and notifies all subscribers if there are updates.
 // Returns true if updates were found, and a map of emails that were successfully notified and saved.
+//
+//nolint:gocritic // Named results would conflict with existing code style
 func (m *Monitor) checkThreadForSubscribers(
 	ctx context.Context,
 	info *threadCheckInfo,
@@ -337,7 +339,13 @@ func (m *Monitor) checkThreadForSubscribers(
 				"thread_url", threadURL,
 				"thread_title", thread.ThreadTitle,
 				"initial_post_id", latestPost.ID)
-			m.saveStateNoNewPosts(ctx, sub, email, info.threadID, threadURL, savedEmails)
+			m.saveStateNoNewPosts(ctx, saveStateParams{
+				sub:         sub,
+				email:       email,
+				threadID:    info.threadID,
+				threadURL:   threadURL,
+				savedEmails: savedEmails,
+			})
 			continue // Move to next subscriber (other subscribers will still be notified)
 		}
 
@@ -345,11 +353,25 @@ func (m *Monitor) checkThreadForSubscribers(
 		newPosts := m.findNewPosts(posts, thread, email, threadURL)
 
 		if len(newPosts) > 0 {
-			if m.sendNotificationAndSave(ctx, sub, thread, newPosts, latestPost, email, threadURL, savedEmails) {
+			if m.sendNotificationAndSave(ctx, notificationParams{
+				sub:         sub,
+				thread:      thread,
+				newPosts:    newPosts,
+				latestPost:  latestPost,
+				email:       email,
+				threadURL:   threadURL,
+				savedEmails: savedEmails,
+			}) {
 				hasUpdates = true
 			}
 		} else {
-			m.saveStateNoNewPosts(ctx, sub, email, info.threadID, threadURL, savedEmails)
+			m.saveStateNoNewPosts(ctx, saveStateParams{
+				sub:         sub,
+				email:       email,
+				threadID:    info.threadID,
+				threadURL:   threadURL,
+				savedEmails: savedEmails,
+			})
 		}
 	}
 
@@ -450,114 +472,134 @@ func (m *Monitor) findNewPosts(posts []*notifier.Post, thread *notifier.Thread, 
 	return newPosts
 }
 
+// notificationParams contains parameters for sending and saving a notification.
+type notificationParams struct {
+	savedEmails map[string]bool
+	sub         *notifier.Subscription
+	thread      *notifier.Thread
+	latestPost  *notifier.Post
+	email       string
+	threadURL   string
+	newPosts    []*notifier.Post
+}
+
 // sendNotificationAndSave sends a notification for new posts and saves the updated state.
-func (m *Monitor) sendNotificationAndSave(ctx context.Context, sub *notifier.Subscription, thread *notifier.Thread, newPosts []*notifier.Post, latestPost *notifier.Post, email, threadURL string, savedEmails map[string]bool) bool {
+func (m *Monitor) sendNotificationAndSave(ctx context.Context, params notificationParams) bool {
 	// Apply safety limit
-	originalCount := len(newPosts)
-	if len(newPosts) > maxPostsPerEmail {
+	originalCount := len(params.newPosts)
+	if len(params.newPosts) > maxPostsPerEmail {
 		m.logger.Warn("Too many new posts, limiting to most recent",
 			"cycle", m.cycleNumber,
-			"email", email,
-			"thread_url", threadURL,
-			"thread_title", thread.ThreadTitle,
-			"total_new", len(newPosts),
+			"email", params.email,
+			"thread_url", params.threadURL,
+			"thread_title", params.thread.ThreadTitle,
+			"total_new", len(params.newPosts),
 			"sending", maxPostsPerEmail)
-		newPosts = newPosts[len(newPosts)-maxPostsPerEmail:]
+		params.newPosts = params.newPosts[len(params.newPosts)-maxPostsPerEmail:]
 	}
 
 	m.logger.Info("Sending notification",
 		"cycle", m.cycleNumber,
-		"email", email,
-		"thread_url", threadURL,
-		"thread_title", thread.ThreadTitle,
-		"new_posts_count", len(newPosts),
+		"email", params.email,
+		"thread_url", params.threadURL,
+		"thread_title", params.thread.ThreadTitle,
+		"new_posts_count", len(params.newPosts),
 		"original_count", originalCount,
 		"capped", originalCount > maxPostsPerEmail,
-		"previous_last_post", thread.LastPostID,
-		"new_last_post", latestPost.ID)
+		"previous_last_post", params.thread.LastPostID,
+		"new_last_post", params.latestPost.ID)
 
-	if err := m.emailer.SendNotification(ctx, sub, thread, newPosts); err != nil {
+	if err := m.emailer.SendNotification(ctx, params.sub, params.thread, params.newPosts); err != nil {
 		m.logger.Error("Failed to send notification - will retry next cycle",
 			"cycle", m.cycleNumber,
-			"email", email,
-			"thread_url", threadURL,
-			"thread_title", thread.ThreadTitle,
+			"email", params.email,
+			"thread_url", params.threadURL,
+			"thread_title", params.thread.ThreadTitle,
 			"error", err)
 		// Don't update LastPostID - subscriber will get notification next cycle
 		// Still save to update LastPolledAt
-		if err := m.store.Save(ctx, sub); err != nil {
+		if err := m.store.Save(ctx, params.sub); err != nil {
 			m.logger.Error("Failed to save state after notification failure",
 				"cycle", m.cycleNumber,
-				"email", email,
+				"email", params.email,
 				"error", err)
 		} else {
-			savedEmails[email] = true
+			params.savedEmails[params.email] = true
 		}
 		return false
 	}
 
 	// Update last post ID after successful notification
-	thread.LastPostID = latestPost.ID
+	params.thread.LastPostID = params.latestPost.ID
 
 	m.logger.Info("Saving state after successful notification",
 		"cycle", m.cycleNumber,
-		"email", email,
-		"thread_url", threadURL,
-		"new_last_post_id", latestPost.ID)
+		"email", params.email,
+		"thread_url", params.threadURL,
+		"new_last_post_id", params.latestPost.ID)
 
 	// CRITICAL: Save immediately to prevent duplicate notifications if server crashes
-	if err := m.store.Save(ctx, sub); err != nil {
+	if err := m.store.Save(ctx, params.sub); err != nil {
 		m.logger.Error("CRITICAL: Notification sent but failed to save state - subscriber may get duplicate notification next cycle",
 			"cycle", m.cycleNumber,
-			"email", email,
-			"thread_url", threadURL,
-			"thread_title", thread.ThreadTitle,
-			"sent_post_id", latestPost.ID,
+			"email", params.email,
+			"thread_url", params.threadURL,
+			"thread_title", params.thread.ThreadTitle,
+			"sent_post_id", params.latestPost.ID,
 			"error", err)
 	} else {
-		savedEmails[email] = true
+		params.savedEmails[params.email] = true
 		m.logger.Info("Notification sent and state saved",
 			"cycle", m.cycleNumber,
-			"email", email,
-			"thread_url", threadURL,
-			"thread_title", thread.ThreadTitle,
-			"new_last_post_id", latestPost.ID)
+			"email", params.email,
+			"thread_url", params.threadURL,
+			"thread_title", params.thread.ThreadTitle,
+			"new_last_post_id", params.latestPost.ID)
 	}
 
 	return true
 }
 
+// saveStateParams contains parameters for saving state when there are no new posts.
+type saveStateParams struct {
+	sub         *notifier.Subscription
+	savedEmails map[string]bool
+	email       string
+	threadID    string
+	threadURL   string
+}
+
 // saveStateNoNewPosts saves state when there are no new posts for a subscriber.
-func (m *Monitor) saveStateNoNewPosts(ctx context.Context, sub *notifier.Subscription, email, threadID, threadURL string, savedEmails map[string]bool) {
-	thread := sub.Threads[threadID]
+func (m *Monitor) saveStateNoNewPosts(ctx context.Context, params saveStateParams) {
+	thread := params.sub.Threads[params.threadID]
 	if thread == nil {
 		m.logger.Error("CRITICAL: Thread not found when saving state (no new posts) - data corruption",
 			"cycle", m.cycleNumber,
-			"email", email,
-			"thread_id", threadID,
-			"thread_url", threadURL)
+			"email", params.email,
+			"thread_id", params.threadID,
+			"thread_url", params.threadURL)
 		return
 	}
 
 	m.logger.Info("No new posts - saving state",
 		"cycle", m.cycleNumber,
-		"email", email,
-		"thread_url", threadURL,
+		"email", params.email,
+		"thread_url", params.threadURL,
 		"thread_title", thread.ThreadTitle)
 
-	if err := m.store.Save(ctx, sub); err != nil {
+	if err := m.store.Save(ctx, params.sub); err != nil {
 		m.logger.Error("Failed to save state (no new posts)",
 			"cycle", m.cycleNumber,
-			"email", email,
-			"thread_url", threadURL,
+			"email", params.email,
+			"thread_url", params.threadURL,
 			"thread_title", thread.ThreadTitle,
 			"error", err)
 	} else {
-		savedEmails[email] = true
+		params.savedEmails[params.email] = true
 		m.logger.Info("State saved successfully (no new posts)",
 			"cycle", m.cycleNumber,
-			"email", email,
-			"thread_url", threadURL,
+			"email", params.email,
+			"thread_url", params.threadURL,
 			"thread_title", thread.ThreadTitle)
 	}
 }
@@ -574,6 +616,8 @@ func (m *Monitor) saveStateNoNewPosts(ctx context.Context, sub *notifier.Subscri
 //   - 24h+ since post → 4 hours (capped)
 //
 // NEVER returns 0s - always returns a minimum interval to prevent polling loops.
+//
+//nolint:gocritic // Named results would conflict with existing code style
 func CalculateInterval(lastPostTime, lastPolledAt time.Time) (time.Duration, string) {
 	const minInterval = 5 * time.Minute // Minimum safe interval
 	const maxInterval = 4 * time.Hour   // Maximum interval for inactive threads

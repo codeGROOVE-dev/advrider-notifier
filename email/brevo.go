@@ -14,11 +14,11 @@ import (
 
 // BrevoProvider sends emails via Brevo (formerly Sendinblue) API.
 type BrevoProvider struct {
+	client   *http.Client
+	logger   *slog.Logger
 	apiKey   string
 	fromAddr string
 	fromName string
-	client   *http.Client
-	logger   *slog.Logger
 }
 
 // NewBrevoProvider creates a new Brevo email provider.
@@ -35,9 +35,9 @@ func NewBrevoProvider(apiKey, fromAddr, fromName string, logger *slog.Logger) *B
 // brevoSendRequest represents the Brevo API send email request.
 type brevoSendRequest struct {
 	Sender  brevoContact   `json:"sender"`
-	To      []brevoContact `json:"to"`
-	Subject string         `json:"subject"`
 	HTML    string         `json:"htmlContent"`
+	Subject string         `json:"subject"`
+	To      []brevoContact `json:"to"`
 }
 
 type brevoContact struct {

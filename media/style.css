@@ -1,352 +1,355 @@
 * {
-	margin: 0;
-	padding: 0;
-	box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 body {
-	font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
-	background: #1a1a1a;
-	min-height: 100vh;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	padding: 20px;
-	-webkit-font-smoothing: antialiased;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", sans-serif;
+  background: #1a1a1a;
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  -webkit-font-smoothing: antialiased;
 }
 
 .container {
-	background: white;
-	border-radius: 16px;
-	box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-	padding: 48px;
-	max-width: 900px;
-	width: 100%;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  padding: 48px;
+  max-width: 900px;
+  width: 100%;
 }
 
 .center {
-	text-align: center;
+  text-align: center;
 }
 
 .icon {
-	font-size: 64px;
-	margin-bottom: 24px;
+  font-size: 64px;
+  margin-bottom: 24px;
 }
 
 h1 {
-	font-size: 28px;
-	font-weight: 600;
-	color: #1a1a1a;
-	margin-bottom: 16px;
-	letter-spacing: -0.5px;
+  font-size: 28px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin-bottom: 16px;
+  letter-spacing: -0.5px;
 }
 
 h2 {
-	font-size: 20px;
-	font-weight: 600;
-	color: #1a1a1a;
-	margin: 32px 0 16px 0;
-	letter-spacing: -0.3px;
+  font-size: 20px;
+  font-weight: 600;
+  color: #1a1a1a;
+  margin: 32px 0 16px 0;
+  letter-spacing: -0.3px;
 }
 
 p {
-	color: #666;
-	font-size: 17px;
-	line-height: 1.6;
-	margin-bottom: 16px;
+  color: #666;
+  font-size: 17px;
+  line-height: 1.6;
+  margin-bottom: 16px;
 }
 
 strong {
-	color: #1a1a1a;
+  color: #1a1a1a;
 }
 
 a {
-	color: #e67e22;
-	text-decoration: none;
-	transition: color 0.2s ease;
+  color: #e67e22;
+  text-decoration: none;
+  transition: color 0.2s ease;
 }
 
 a:hover {
-	text-decoration: underline;
+  text-decoration: underline;
 }
 
 a:focus {
-	outline: 2px solid #e67e22;
-	outline-offset: 2px;
-	text-decoration: underline;
+  outline: 2px solid #e67e22;
+  outline-offset: 2px;
+  text-decoration: underline;
 }
 
 /* Button-styled links for CTAs */
 a.button {
-	display: inline-flex;
-	align-items: center;
-	justify-content: center;
-	background: #e67e22;
-	color: white;
-	padding: 14px 28px;
-	border-radius: 8px;
-	text-decoration: none;
-	font-size: 17px;
-	font-weight: 600;
-	transition: all 0.2s ease;
-	box-shadow: 0 4px 12px rgba(230, 126, 34, 0.3);
-	margin-top: 16px;
-	min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: #e67e22;
+  color: white;
+  padding: 14px 28px;
+  border-radius: 8px;
+  text-decoration: none;
+  font-size: 17px;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(230, 126, 34, 0.3);
+  margin-top: 16px;
+  min-height: 44px;
 }
 
 a.button:hover {
-	background: #d35400;
-	transform: translateY(-1px);
-	box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
-	text-decoration: none;
+  background: #d35400;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
+  text-decoration: none;
 }
 
 a.button:focus {
-	outline: 3px solid #e67e22;
-	outline-offset: 2px;
+  outline: 3px solid #e67e22;
+  outline-offset: 2px;
 }
 
 label {
-	display: block;
-	margin-bottom: 8px;
-	color: #333;
-	font-weight: 500;
-	font-size: 15px;
+  display: block;
+  margin-bottom: 8px;
+  color: #333;
+  font-weight: 500;
+  font-size: 15px;
 }
 
 input[type="url"],
 input[type="email"] {
-	width: 100%;
-	padding: 14px;
-	border: 2px solid #ddd;
-	border-radius: 8px;
-	font-size: 16px;
-	font-family: inherit;
-	transition: border-color 0.2s ease, box-shadow 0.2s ease;
-	margin-bottom: 20px;
+  width: 100%;
+  padding: 14px;
+  border: 2px solid #ddd;
+  border-radius: 8px;
+  font-size: 16px;
+  font-family: inherit;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+  margin-bottom: 20px;
 }
 
 input[type="url"]:focus,
 input[type="email"]:focus {
-	outline: 3px solid #e67e22;
-	outline-offset: 2px;
-	border-color: #e67e22;
-	box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.1);
+  outline: 3px solid #e67e22;
+  outline-offset: 2px;
+  border-color: #e67e22;
+  box-shadow: 0 0 0 3px rgba(230, 126, 34, 0.1);
 }
 
 button {
-	background: #e67e22;
-	color: white;
-	padding: 14px 28px;
-	border: none;
-	border-radius: 8px;
-	font-size: 17px;
-	font-weight: 600;
-	cursor: pointer;
-	transition: all 0.2s ease;
-	box-shadow: 0 4px 12px rgba(230, 126, 34, 0.3);
-	font-family: inherit;
-	min-height: 44px;
+  background: #e67e22;
+  color: white;
+  padding: 14px 28px;
+  border: none;
+  border-radius: 8px;
+  font-size: 17px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 4px 12px rgba(230, 126, 34, 0.3);
+  font-family: inherit;
+  min-height: 44px;
 }
 
 button:hover {
-	background: #d35400;
-	transform: translateY(-1px);
-	box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
+  background: #d35400;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(230, 126, 34, 0.4);
 }
 
 button:focus {
-	outline: 3px solid #e67e22;
-	outline-offset: 2px;
+  outline: 3px solid #e67e22;
+  outline-offset: 2px;
 }
 
 button.secondary {
-	background: #666;
-	box-shadow: 0 4px 12px rgba(102, 102, 102, 0.3);
+  background: #666;
+  box-shadow: 0 4px 12px rgba(102, 102, 102, 0.3);
 }
 
 button.secondary:hover {
-	background: #555;
-	box-shadow: 0 6px 20px rgba(102, 102, 102, 0.4);
+  background: #555;
+  box-shadow: 0 6px 20px rgba(102, 102, 102, 0.4);
 }
 
 button.secondary:focus {
-	outline: 3px solid #666;
-	outline-offset: 2px;
+  outline: 3px solid #666;
+  outline-offset: 2px;
 }
 
 .url-box {
-	background: #f9f9f9;
-	border: 1px solid #ddd;
-	border-radius: 8px;
-	padding: 16px;
-	margin: 24px 0;
-	word-break: break-all;
-	font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-	font-size: 14px;
-	color: #666;
-	text-align: left;
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 16px;
+  margin: 24px 0;
+  word-break: break-all;
+  font-family: "SF Mono", "Monaco", "Courier New", monospace;
+  font-size: 14px;
+  color: #666;
+  text-align: left;
 }
 
 .thread-list {
-	margin-top: 32px;
+  margin-top: 32px;
 }
 
 .thread-item {
-	background: #f9f9f9;
-	border: 1px solid #ddd;
-	border-radius: 8px;
-	padding: 20px;
-	margin-bottom: 16px;
-	text-align: left;
+  background: #f9f9f9;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 16px;
+  text-align: left;
 }
 
 .thread-url {
-	font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-	font-size: 14px;
-	word-break: break-all;
-	margin-bottom: 8px;
+  font-family: "SF Mono", "Monaco", "Courier New", monospace;
+  font-size: 14px;
+  word-break: break-all;
+  margin-bottom: 8px;
 }
 
 .thread-url a {
-	color: #0066cc;
-	text-decoration: underline;
+  color: #0066cc;
+  text-decoration: underline;
 }
 
 .thread-url a:hover {
-	color: #004499;
+  color: #004499;
 }
 
 .thread-meta {
-	font-size: 14px;
-	color: #999;
-	margin-bottom: 16px;
+  font-size: 14px;
+  color: #999;
+  margin-bottom: 16px;
 }
 
 .thread-actions {
-	display: flex;
-	gap: 12px;
+  display: flex;
+  gap: 12px;
 }
 
 .thread-actions button {
-	padding: 10px 20px;
-	font-size: 15px;
+  padding: 10px 20px;
+  font-size: 15px;
 }
 
 .unsubscribe-all {
-	margin-top: 48px;
-	padding-top: 32px;
-	border-top: 1px solid #eee;
+  margin-top: 48px;
+  padding-top: 32px;
+  border-top: 1px solid #eee;
 }
 
 .empty {
-	text-align: center;
-	padding: 40px 20px;
-	color: #666;
+  text-align: center;
+  padding: 40px 20px;
+  color: #666;
 }
 
 .empty p {
-	margin-bottom: 24px;
+  margin-bottom: 24px;
 }
 
 /* Empty state uses button class for CTA */
 
 .logo {
-	text-align: center;
-	margin-bottom: 32px;
+  text-align: center;
+  margin-bottom: 32px;
 }
 
 .logo img {
-	width: 120px;
-	height: auto;
+  width: 120px;
+  height: auto;
 }
 
 .subtitle {
-	text-align: center;
-	color: #666;
-	font-size: 17px;
-	margin-bottom: 40px;
-	line-height: 1.5;
+  text-align: center;
+  color: #666;
+  font-size: 17px;
+  margin-bottom: 40px;
+  line-height: 1.5;
 }
 
 form {
-	margin-bottom: 32px;
+  margin-bottom: 32px;
 }
 
 .input-group {
-	margin-bottom: 24px;
+  margin-bottom: 24px;
 }
 
 input[type="url"] {
-	font-size: 14px;
-	font-family: 'SF Mono', 'Monaco', 'Courier New', monospace;
-	word-break: break-all;
-	background: #f9f9f9;
+  font-size: 14px;
+  font-family: "SF Mono", "Monaco", "Courier New", monospace;
+  word-break: break-all;
+  background: #f9f9f9;
 }
 
 input[type="email"] {
-	background: #f9f9f9;
+  background: #f9f9f9;
 }
 
 input::placeholder {
-	color: #999;
+  color: #999;
 }
 
 button[type="submit"] {
-	width: 100%;
-	padding: 16px;
+  width: 100%;
+  padding: 16px;
 }
 
 button:active {
-	transform: translateY(0);
+  transform: translateY(0);
 }
 
 .features {
-	margin-top: 32px;
-	padding-top: 32px;
-	border-top: 1px solid #eee;
+  margin-top: 32px;
+  padding-top: 32px;
+  border-top: 1px solid #eee;
 }
 
 .feature {
-	display: flex;
-	align-items: flex-start;
-	margin-bottom: 16px;
-	font-size: 15px;
-	color: #555;
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  font-size: 15px;
+  color: #555;
 }
 
 .feature:last-child {
-	margin-bottom: 0;
+  margin-bottom: 0;
 }
 
 .feature::before {
-	content: "✓";
-	color: #e67e22;
-	font-weight: 700;
-	margin-right: 12px;
-	font-size: 18px;
+  content: "✓";
+  color: #e67e22;
+  font-weight: 700;
+  margin-right: 12px;
+  font-size: 18px;
 }
 
 .footer {
-	margin-top: 32px;
-	padding-top: 24px;
-	border-top: 1px solid #eee;
-	text-align: center;
-	font-size: 14px;
-	color: #767676;
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid #eee;
+  text-align: center;
+  font-size: 14px;
+  color: #767676;
 }
 
 @media (max-width: 600px) {
-	.container {
-		padding: 32px 24px;
-	}
-	h1 {
-		font-size: 24px;
-	}
-	.thread-actions {
-		flex-direction: column;
-	}
-	.thread-actions button {
-		width: 100%;
-	}
+  .container {
+    padding: 32px 24px;
+  }
+  h1 {
+    font-size: 24px;
+  }
+  .thread-actions {
+    flex-direction: column;
+  }
+  .thread-actions button {
+    width: 100%;
+  }
 }

@@ -25,20 +25,20 @@ import (
 // Store handles subscription persistence.
 type Store struct {
 	client    *storage.Client
-	bucket    string
-	localPath string // Local storage path for development (optional)
-	salt      []byte // SALT for deriving tokens from emails
 	logger    *slog.Logger
+	localPath string
+	bucket    string
+	salt      []byte
 }
 
 // New creates a new storage handler.
 func New(client *storage.Client, bucket string, localPath string, salt []byte, logger *slog.Logger) *Store {
 	return &Store{
 		client:    client,
-		bucket:    bucket,
-		localPath: localPath,
-		salt:      salt,
 		logger:    logger,
+		salt:      salt,
+		localPath: localPath,
+		bucket:    bucket,
 	}
 }
 

@@ -18,7 +18,6 @@ func (s *Server) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/manage?token="+url.QueryEscape(token), http.StatusSeeOther)
 }
 
-//nolint:varnamelen // Standard http.Handler parameter names
 func (s *Server) handleManage(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if token == "" || len(token) != 64 {

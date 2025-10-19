@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-//nolint:funlen,varnamelen // HTTP handler with comprehensive validation - complexity justified for security
+//nolint:funlen // HTTP handler with comprehensive validation - complexity justified for security
 func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -33,11 +33,12 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 	// Validate ADVRider thread URL
 	matches := advRiderThreadRegex.FindStringSubmatch(threadURL)
 	if matches == nil {
-		http.Error(w, "Invalid ADVRider thread URL - must contain '/f/threads/' (e.g., https://advrider.com/f/threads/example.123456/)", http.StatusBadRequest)
+		//nolint:revive // Error message - line length unavoidable for clarity
+		http.Error(w, "Invalid ADVRider thread URL - must contain '/f/threads/' (e.g., https://advrider.com/f/threads/example.123456/ or https://www.advrider.com/f/threads/example.123456/)", http.StatusBadRequest)
 		return
 	}
 
-	threadID := matches[1]
+	threadID := matches[2]
 
 	// Normalize URL (remove page numbers, anchors)
 	baseThreadURL, err := normalizeThreadURL(threadURL, threadID)
@@ -60,6 +61,7 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 				"ThreadURL": threadURL,
 			}); err != nil {
 				s.logger.Error("Failed to render template", "template", "forbidden.tmpl", "error", err)
+				//nolint:revive // Error message - line length unavoidable for clarity
 				http.Error(w, "This thread is in a login-required forum (like Jo Momma) and cannot be monitored. We apologize for the inconvenience.", http.StatusForbidden)
 			}
 			return
@@ -133,6 +135,7 @@ func (s *Server) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 
 	lastPostTime, err := time.Parse(time.RFC3339, post.Timestamp)
 	if err != nil {
+		//nolint:revive // Log message with multiple fields - line length unavoidable
 		s.logger.Error("Failed to parse post timestamp", "url", baseThreadURL, "title", threadTitle, "post_id", post.ID, "timestamp", post.Timestamp, "error", err)
 		http.Error(w, "Could not parse post timestamp - the page structure may have changed", http.StatusInternalServerError)
 		return

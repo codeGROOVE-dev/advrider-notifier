@@ -15,6 +15,7 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 	b.WriteString("<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	b.WriteString("<style>\n")
+	//nolint:revive // CSS style string - line length unavoidable
 	b.WriteString("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 12px 20px; background: #fff; }\n")
 	b.WriteString(".post { padding: 24px 0; border-bottom: 2px solid #e67e22; }\n")
 	b.WriteString(".post:last-of-type { border-bottom: none; padding-bottom: 0; }\n")
@@ -55,16 +56,17 @@ func (s *Sender) formatNotificationBody(sub *notifier.Subscription, thread *noti
 		isFirst := i == 0
 		isLast := i == len(posts)-1
 
-		if isFirst && isLast {
+		switch {
+		case isFirst && isLast:
 			// Single post: no top padding, no bottom border
 			b.WriteString("<div class=\"post\" style=\"padding-top: 0; border-bottom: none; padding-bottom: 0;\">\n")
-		} else if isFirst {
+		case isFirst:
 			// First of multiple: no top padding
 			b.WriteString("<div class=\"post\" style=\"padding-top: 0;\">\n")
-		} else if isLast {
+		case isLast:
 			// Last of multiple: no bottom border
 			b.WriteString("<div class=\"post\" style=\"border-bottom: none; padding-bottom: 0;\">\n")
-		} else {
+		default:
 			b.WriteString("<div class=\"post\">\n")
 		}
 		b.WriteString("<div class=\"meta\">\n")
@@ -124,6 +126,7 @@ func (s *Sender) formatWelcomeBody(sub *notifier.Subscription, thread *notifier.
 	b.WriteString("<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	b.WriteString("<style>\n")
+	//nolint:revive // CSS style string - line length unavoidable
 	b.WriteString("body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #333; max-width: 800px; margin: 0 auto; padding: 20px; background: #fff; }\n")
 	b.WriteString(".header { border-bottom: 2px solid #e67e22; padding-bottom: 10px; margin-bottom: 20px; }\n")
 	b.WriteString(".content { background: #f8f9fa; padding: 20px; border-radius: 8px; margin: 15px 0; }\n")
@@ -146,6 +149,7 @@ func (s *Sender) formatWelcomeBody(sub *notifier.Subscription, thread *notifier.
 	b.WriteString("</div>\n")
 
 	b.WriteString("<div class=\"content\">\n")
+	//nolint:revive // HTML template string - line length unavoidable
 	b.WriteString(fmt.Sprintf("<p>You've successfully subscribed to notifications for the thread: <strong>%s</strong></p>\n", escapeHTML(thread.ThreadTitle)))
 	b.WriteString("<p>You'll receive an email whenever new posts are added to this thread.</p>\n")
 	b.WriteString("</div>\n")
@@ -184,7 +188,7 @@ func escapeHTML(s string) string {
 // Only allows safe tags and attributes to prevent XSS, phishing, and tracking.
 // This is designed for email contexts where security is critical.
 //
-//nolint:gocognit,funlen // Security-critical HTML sanitizer - complexity justified for comprehensive safety
+//nolint:gocognit,funlen,revive // Security-critical HTML sanitizer - complexity justified for comprehensive safety
 func sanitizeHTML(html string) string {
 	// Whitelist of allowed tags (no scripts, forms, iframes, etc.)
 	allowedTags := map[string]bool{
@@ -212,14 +216,15 @@ func sanitizeHTML(html string) string {
 
 	//nolint:intrange,varnamelen // Index used for look-ahead parsing - range loop not suitable
 	for i := 0; i < len(html); i++ {
-		if html[i] == '<' {
+		switch {
+		case html[i] == '<':
 			if inTag {
 				// Malformed HTML - escape the previous <
 				result.WriteString("&lt;")
 			}
 			inTag = true
 			tagStart = i
-		} else if html[i] == '>' && inTag {
+		case html[i] == '>' && inTag:
 			tagContent := html[tagStart+1 : i]
 
 			// Check if it's a closing tag
@@ -248,7 +253,8 @@ func sanitizeHTML(html string) string {
 					result.WriteString(tagName)
 
 					// Only allow safe attributes for specific tags
-					if tagName == "img" {
+					switch tagName {
+					case "img":
 						// Extract and validate src and alt attributes
 						if src := extractAttribute(tagContent, "src"); src != "" && isSafeURL(src) {
 							result.WriteString(` src="`)
@@ -260,7 +266,7 @@ func sanitizeHTML(html string) string {
 							result.WriteString(escapeHTML(alt))
 							result.WriteString(`"`)
 						}
-					} else if tagName == "a" {
+					case "a":
 						// Extract and validate href attribute
 						if href := extractAttribute(tagContent, "href"); href != "" && isSafeURL(href) {
 							result.WriteString(` href="`)
@@ -277,7 +283,8 @@ func sanitizeHTML(html string) string {
 				// This helps users understand that content was removed for security
 				if !isClosing {
 					// Only show placeholder for opening tags, not closing tags
-					if tagName == "iframe" {
+					switch tagName {
+					case "iframe":
 						// For iframes, extract the src URL and show it as a link
 						if src := extractAttribute(tagContent, "src"); src != "" && isSafeURL(src) {
 							result.WriteString("[iframe: <a href=\"")
@@ -288,11 +295,11 @@ func sanitizeHTML(html string) string {
 						} else {
 							result.WriteString("[replaced iframe]")
 						}
-					} else if tagName == "video" || tagName == "embed" || tagName == "object" {
+					case "video", "embed", "object":
 						result.WriteString("[replaced ")
 						result.WriteString(tagName)
 						result.WriteString("]")
-					} else {
+					default:
 						// For other disallowed tags, escape them
 						result.WriteString("&lt;")
 						result.WriteString(escapeHTML(tagContent))
@@ -303,7 +310,7 @@ func sanitizeHTML(html string) string {
 			}
 
 			inTag = false
-		} else if !inTag {
+		case !inTag:
 			// Regular content - keep as-is (already HTML entities in the original)
 			result.WriteByte(html[i])
 		}

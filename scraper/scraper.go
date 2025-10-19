@@ -17,10 +17,10 @@ import (
 
 // Page represents a parsed thread page with posts and metadata.
 type Page struct {
-	Posts       []*notifier.Post
 	Title       string
-	LastPage    int // Last page number (0 if single page)
-	CurrentPage int // Current page number
+	Posts       []*notifier.Post
+	LastPage    int
+	CurrentPage int
 }
 
 // HTTP403Error indicates a 403 Forbidden response (login required).
@@ -166,7 +166,9 @@ func (s *Scraper) fetchSinglePage(ctx context.Context, pageURL string) (*Page, e
 			}
 
 			// Set essential Chrome-like headers to avoid getting blocked
+			//nolint:revive // User-Agent string - line length unavoidable
 			req.Header.Set("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+			//nolint:revive // Accept header - line length unavoidable
 			req.Header.Set("Accept", "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7")
 			req.Header.Set("Accept-Language", "en-US,en;q=0.9")
 			// Note: Don't set Accept-Encoding - let Go's http.Client handle compression automatically
